@@ -9,6 +9,9 @@ using System.Threading.Tasks;
 using System.Collections.Generic;
 using RePlays.Classes.Services;
 using System.Diagnostics;
+using static RePlays.Services.RecordingService;
+using System.Runtime.InteropServices;
+using System.Threading;
 
 namespace RePlays.Recorders {
     public class LibObsRecorder : BaseRecorder {
@@ -19,6 +22,7 @@ namespace RePlays.Recorders {
         static IntPtr windowHandle = IntPtr.Zero;
         static IntPtr output = IntPtr.Zero;
         static Rect windowSize;
+        private CancellationTokenSource source = new();
 
         Dictionary<string, IntPtr> audioSources = new(), videoSources = new();
         Dictionary<string, IntPtr> audioEncoders = new(), videoEncoders = new();
@@ -272,10 +276,9 @@ namespace RePlays.Recorders {
                 ReleaseSources();
                 ReleaseEncoders();
                 return false;
-            } else {
-                Logger.WriteLine($"LibObs started recording [{session.Pid}] [{session.GameTitle}] [{windowClassNameId}]");
             }
 
+            Logger.WriteLine($"LibObs started recording [{session.Pid}] [{session.GameTitle}] [{windowClassNameId}]");
             return true;
         }
 
@@ -310,9 +313,50 @@ namespace RePlays.Recorders {
             return encoderPtr;
         }
 
-        public override void LostFocus()
+        public override async void LostFocus()
         {
             if (DisplayCapture) PauseDisplayOutput();
+            else if (!IsWindow(windowHandle))
+            {
+                IntPtr handle = await GetWindowHandle(GetCurrentSession().Pid, source.Token);
+                if (handle != IntPtr.Zero)
+                {
+                    ReleaseVideoSources();
+                    var windowClassNameId = GetWindowTitle(windowHandle) + ":" + GetClassName(windowHandle) + ":" + Path.GetFileName(GetCurrentSession().Exe);
+                    IntPtr videoSourceSettings = obs_data_create();
+                    obs_data_set_string(videoSourceSettings, "capture_mode", "window");
+                    obs_data_set_string(videoSourceSettings, "window", windowClassNameId);
+                    videoSources.TryAdd("gameplay", obs_source_create("game_capture", "gameplay", videoSourceSettings, IntPtr.Zero));
+                    obs_data_release(videoSourceSettings);
+                }
+            }
+        }
+
+        private async Task<IntPtr> GetWindowHandle(int pid, CancellationToken token = default)
+        {
+            int retryAttempt = 0;
+            windowHandle = GetWindowHandleByProcessId(pid, true);
+            while (windowHandle == IntPtr.Zero && retryAttempt < maxRetryAttempts)
+            {
+                Logger.WriteLine($"Waiting to retrieve process handle... retry attempt #{retryAttempt}");
+                await Task.Delay(retryInterval);
+                if (token.IsCancellationRequested) return IntPtr.Zero;
+                retryAttempt++;
+                if (retryAttempt % 2 == 1) // alternate, one or the other might get us a better handle
+                {
+                    windowHandle = GetWindowHandleByProcessId(pid);
+                }
+                else
+                {
+                    windowHandle = GetWindowHandleByProcessId(pid, true);
+                }
+            }
+            if (retryAttempt >= maxRetryAttempts)
+            {
+                return IntPtr.Zero;
+            }
+
+            return windowHandle;
         }
 
         public override void GainedFocus()
@@ -392,6 +436,8 @@ namespace RePlays.Recorders {
             Logger.WriteLine($"Session recording saved to {videoSavePath}");
             Logger.WriteLine($"LibObs stopped recording {session.Pid} {session.GameTitle} [{bnum_allocs()}]");
             DisplayCapture = false;
+            source.Cancel();
+            source = new CancellationTokenSource();
             RecordingService.lastVideoDuration = GetVideoDuration(videoSavePath);
             try {
                 var t = await Task.Run(() => GetAllVideos(WebMessage.videoSortSettings.game, WebMessage.videoSortSettings.sortBy));
@@ -503,5 +549,9 @@ namespace RePlays.Recorders {
             obs_output_release(output);
             output = IntPtr.Zero;
         }
+
+        [DllImport("user32.dll")]
+        [return: MarshalAs(UnmanagedType.Bool)]
+        static extern bool IsWindow(IntPtr hWnd);
     }
 }
