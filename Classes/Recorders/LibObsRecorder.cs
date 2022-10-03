@@ -9,6 +9,7 @@ using System.Threading.Tasks;
 using System.Collections.Generic;
 using RePlays.Classes.Services;
 using System.Diagnostics;
+using System.Threading;
 
 namespace RePlays.Recorders {
     public class LibObsRecorder : BaseRecorder {
@@ -110,9 +111,8 @@ namespace RePlays.Recorders {
 
         const int retryInterval = 2000; // 2 second
         const int maxRetryAttempts = 20; // 30 retries
-        public override async Task<bool> StartRecording() {
+        public override async Task<bool> StartRecording(CancellationToken token) {
             if (output != IntPtr.Zero) return false;
-
             signalOutputStop = false;
             int retryAttempt = 0;
             var session = RecordingService.GetCurrentSession();
@@ -130,6 +130,11 @@ namespace RePlays.Recorders {
             // attempt to retrieve process's window handle to retrieve class name and window title
             windowHandle = GetWindowHandleByProcessId(session.Pid, true);
             while (windowHandle == IntPtr.Zero && retryAttempt < maxRetryAttempts) {
+                if (token.IsCancellationRequested)
+                {
+                    ReleaseAll();
+                    return false;
+                }
                 Logger.WriteLine($"Waiting to retrieve process handle... retry attempt #{retryAttempt}");
                 await Task.Delay(retryInterval);
                 retryAttempt++;
@@ -156,6 +161,11 @@ namespace RePlays.Recorders {
             // sometimes, the inital window size might be in a middle of a transition, and gives us a weird dimension
             // this is a quick a dirty check: if there aren't more than 1120 pixels, we can assume it needs a retry
             while (windowSize.GetWidth() + windowSize.GetHeight() < 1120 && retryAttempt < maxRetryAttempts) {
+                if (token.IsCancellationRequested)
+                {
+                    ReleaseAll();
+                    return false;
+                }
                 Logger.WriteLine(string.Format("Waiting to retrieve correct window size (currently {1}x{2})... retry attempt #{0}",
                     retryAttempt, windowSize.GetWidth(), windowSize.GetHeight()));
                 await Task.Delay(retryInterval);
@@ -204,6 +214,11 @@ namespace RePlays.Recorders {
             // attempt to wait for game_capture source to hook first
             // this might take longer, so multiply maxRetryAttempts
             while (signalGCHookSuccess == false && retryAttempt < maxRetryAttempts) {
+                if (token.IsCancellationRequested)
+                {
+                    ReleaseAll();
+                    return false;
+                } 
                 Logger.WriteLine($"Waiting for successful graphics hook for [{windowClassNameId}]... retry attempt #{retryAttempt}");
                 await Task.Delay(retryInterval);
                 retryAttempt++;
@@ -214,10 +229,9 @@ namespace RePlays.Recorders {
                     Logger.WriteLine("Attempting to use display capture instead");
                     StartDisplayCapture();
                 }
-                else {
-                    ReleaseOutput();
-                    ReleaseSources();
-                    ReleaseEncoders();
+                else
+                {
+                    ReleaseAll();
                     return false;
                 }
             }
@@ -240,6 +254,11 @@ namespace RePlays.Recorders {
             bool canStartCapture = obs_output_can_begin_data_capture(output, 0);
             if (!canStartCapture) {
                 while(!obs_output_initialize_encoders(output, 0) && retryAttempt < maxRetryAttempts) {
+                    if (token.IsCancellationRequested)
+                    {
+                        ReleaseAll();
+                        return false;
+                    }
                     Logger.WriteLine($"Waiting for encoders to finish initializing... retry attempt #{retryAttempt}");
                     await Task.Delay(retryInterval);
                     retryAttempt++;
@@ -277,6 +296,13 @@ namespace RePlays.Recorders {
             }
 
             return true;
+        }
+
+        private void ReleaseAll()
+        {
+            ReleaseOutput();
+            ReleaseSources();
+            ReleaseEncoders();
         }
 
         private void StartDisplayCapture()
