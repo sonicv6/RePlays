@@ -5,12 +5,13 @@ using System.Diagnostics;
 using System.Linq;
 using System.Runtime.InteropServices;
 using System.Text;
+using System.Threading;
 using System.Threading.Tasks;
 
 namespace RePlays.Recorders {
     public abstract class BaseRecorder {
         public abstract void Start();
-        public abstract Task<bool> StartRecording();
+        public abstract Task<bool> StartRecording(CancellationToken token);
         public abstract Task<bool> StopRecording();
         public abstract void LostFocus();
         public abstract void GainedFocus();

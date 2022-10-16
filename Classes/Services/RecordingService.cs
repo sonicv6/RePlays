@@ -2,20 +2,22 @@
 using RePlays.Utils;
 using System.Timers;
 using System;
+using System.Threading;
 using System.Threading.Tasks;
+using Timer = System.Timers.Timer;
 
 namespace RePlays.Services {
     public static class RecordingService {
         public static BaseRecorder ActiveRecorder;
+        private static CancellationTokenSource source = new();
 
         private static Timer recordingTimer = new Timer(1000);
         public static int recordingElapsed = 0;
         public static double lastVideoDuration = 0;
         private static Session currentSession = new(0, "Game Unknown");
         public static bool IsRecording { get; internal set; }
-        private static bool IsPreRecording { get; set; }
+        public static bool IsPreRecording { get; internal set; }
         public static bool GameInFocus { get; set; }
-
         public class Session {
             public int Pid { get; internal set; }
             public string GameTitle { get; internal set; }
@@ -59,7 +61,7 @@ namespace RePlays.Services {
             if (IsRecording || IsPreRecording) return;
 
             IsPreRecording = true;
-            bool result = await ActiveRecorder.StartRecording();
+            bool result = await ActiveRecorder.StartRecording(source.Token);
             Logger.WriteLine("Start Success: " + result.ToString());
             Logger.WriteLine("Still allowed to record: " + (!IsRecording && result).ToString());
             if (!IsRecording && result) {
@@ -90,6 +92,9 @@ namespace RePlays.Services {
         }
 
         public static async void StopRecording() {
+            if (IsPreRecording) source.Cancel();
+            source = new();
+            Logger.WriteLine($"Process {currentSession.Pid} exited");
             if (!IsRecording) return;
 
             bool result = await ActiveRecorder.StopRecording();
@@ -112,7 +117,7 @@ namespace RePlays.Services {
             if (!IsRecording) return;
 
             bool stopResult = await ActiveRecorder.StopRecording();
-            bool startResult = await ActiveRecorder.StartRecording();
+            bool startResult = await ActiveRecorder.StartRecording(source.Token);
 
             if (stopResult && startResult) {
                 Logger.WriteLine("Recording restart successful");

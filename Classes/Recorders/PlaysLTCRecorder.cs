@@ -1,6 +1,7 @@
 ﻿using PlaysLTCWrapper;
 using RePlays.Services;
 using System.IO;
+using System.Threading;
 using System.Threading.Tasks;
 using RePlays.Utils;
 using static RePlays.Utils.Functions;
@@ -106,7 +107,7 @@ namespace RePlays.Recorders {
         }
 
 
-        public override Task<bool> StartRecording() {
+        public override Task<bool> StartRecording(CancellationToken token) {
             ltc.SetKeyBinds();
             ltc.StartRecording();
             return Task.FromResult(true);

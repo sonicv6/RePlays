@@ -9,6 +9,7 @@ using System.Threading.Tasks;
 using System.Collections.Generic;
 using RePlays.Classes.Services;
 using System.Diagnostics;
+using System.Threading;
 
 namespace RePlays.Recorders {
     public class LibObsRecorder : BaseRecorder {
@@ -110,7 +111,7 @@ namespace RePlays.Recorders {
 
         const int retryInterval = 2000; // 2 second
         const int maxRetryAttempts = 20; // 30 retries
-        public override async Task<bool> StartRecording() {
+        public override async Task<bool> StartRecording(CancellationToken token) {
             if (output != IntPtr.Zero) return false;
 
             signalOutputStop = false;
@@ -204,13 +205,20 @@ namespace RePlays.Recorders {
             // attempt to wait for game_capture source to hook first
             // this might take longer, so multiply maxRetryAttempts
             while (signalGCHookSuccess == false && retryAttempt < maxRetryAttempts) {
+                if (token.IsCancellationRequested)
+                {
+                    ReleaseOutput();
+                    ReleaseSources();
+                    ReleaseEncoders();
+                    return false;
+                }
                 Logger.WriteLine($"Waiting for successful graphics hook for [{windowClassNameId}]... retry attempt #{retryAttempt}");
                 await Task.Delay(retryInterval);
                 retryAttempt++;
             }
             if (retryAttempt >= maxRetryAttempts) {
                 Logger.WriteLine(string.Format("Unable to get graphics hook for [{0}]", windowClassNameId));
-                if (SettingsService.Settings.captureSettings.useDisplayCapture && Process.GetProcessById(session.Pid) != null) {
+                if (SettingsService.Settings.captureSettings.useDisplayCapture ) {
                     Logger.WriteLine("Attempting to use display capture instead");
                     StartDisplayCapture();
                 }

@@ -88,7 +88,7 @@ namespace RePlays.Services {
             e.NewEvent.Dispose();
         }
         static void ProcessDeletion_EventArrived(object sender, EventArrivedEventArgs e) {
-            if (!RecordingService.IsRecording) return;
+            if (!RecordingService.IsRecording && !RecordingService.IsPreRecording) return;
 
             try
             {
