@@ -1,9 +1,11 @@
 ﻿using RePlays.Recorders;
 using RePlays.Utils;
+using static RePlays.Utils.Functions;
 using System;
 using System.Threading.Tasks;
 using System.Timers;
 using Timer = System.Timers.Timer;
+using System.IO;
 
 
 namespace RePlays.Services {
@@ -21,12 +23,17 @@ namespace RePlays.Services {
         private static bool IsRestarting { get; set; }
         public static bool GameInFocus { get; set; }
 
+        const int retryInterval = 2000; // 2 second
+        const int maxRetryAttempts = 20; // 20 retries
+
         public class Session {
             public int Pid { get; internal set; }
             public nint WindowHandle { get; internal set; }
             public string GameTitle { get; internal set; }
             public string Exe { get; internal set; }
             public bool ForceDisplayCapture { get; internal set; }
+            public string videoSavePath { get; internal set; }
+            public string videoNameTimeStamp { get; internal set; }
             public Session(int _Pid, nint _WindowHandle, string _GameTitle, string _Exe = null, bool _ForceDisplayCapture = false) {
                 Pid = _Pid;
                 WindowHandle = _WindowHandle;
@@ -59,15 +66,69 @@ namespace RePlays.Services {
             return currentSession;
         }
 
+        private static async Task<bool> GetValidWindowHandle() {
+            nint windowHandle = currentSession.WindowHandle;
+            int retryAttempt = 0;
+            while ((DetectionService.HasBadWordInClassName(windowHandle) || windowHandle == IntPtr.Zero) && retryAttempt < maxRetryAttempts) {
+                Logger.WriteLine($"Waiting to retrieve process handle... retry attempt #{retryAttempt}");
+                await Task.Delay(retryInterval);
+                retryAttempt++;
+                // alternate on retry attempts, one or the other might get us a better handle
+                windowHandle = WindowService.GetWindowHandleByProcessId(currentSession.Pid, retryAttempt % 2 == 1);
+            }
+            if (retryAttempt >= maxRetryAttempts) {
+                return false;
+            }
+            currentSession.WindowHandle = windowHandle;
+            return true;
+        }
+
+        private static bool StartManualRecording() {
+            if (WindowService.GetForegroundWindow(out int processId, out nint hwid)) {
+                if (processId != 0 || hwid != 0) {
+                    WindowService.GetExecutablePathFromProcessId(processId, out string executablePath);
+                    DetectionService.AutoDetectGame(processId, executablePath, hwid, autoRecord: false);
+                    return true;
+                }
+                else {
+                    return false;
+                }
+            }
+            return false;
+        }
+
+        private static bool SetOutputDetails() {
+            var session = currentSession;
+            string dir = Path.Join(GetPlaysFolder(), "/" + MakeValidFolderNameSimple(session.GameTitle) + "/");
+            try {
+                Directory.CreateDirectory(dir);
+            }
+            catch (Exception e) {
+                WebMessage.DisplayModal(string.Format("Unable to create folder {0}. Do you have permission to create it?", dir), "Recording Error", "warning");
+                Logger.WriteLine(e.ToString());
+                return false;
+            }
+            session.videoNameTimeStamp = DateTime.Now.ToString("yyyy_MM_dd_HH_mm_ss");
+
+            FileFormat currentFileFormat = SettingsService.Settings.captureSettings.fileFormat ?? (new FileFormat("mp4", "MP4 (.mp4)", true));
+            Logger.WriteLine($"Output file format: " + currentFileFormat.ToString());
+            session.videoSavePath = Path.Join(dir, session.videoNameTimeStamp + "-ses." + currentFileFormat.GetFileExtension());
+            return true;
+        }
+
         //[STAThread]
-        public static async void StartRecording() {
+        public static async void StartRecording(bool manual) {
             if (IsRecording || IsPreRecording) {
                 Logger.WriteLine($"Cannot start recording, already recording [{currentSession.Pid}][{currentSession.GameTitle}]");
                 return;
             }
 
             IsPreRecording = true;
-            bool result = await ActiveRecorder.StartRecording();
+            bool result = true;
+            if (manual) result = StartManualRecording();
+            if (result) result = await GetValidWindowHandle();
+            if (result) result = SetOutputDetails();
+            if (result) result = await ActiveRecorder.StartRecording();
             Logger.WriteLine("Start Success: " + result.ToString());
             Logger.WriteLine("Still allowed to record: " + (!IsRecording && result).ToString());
             if (!IsRecording && result) {

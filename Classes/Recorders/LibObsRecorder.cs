@@ -18,12 +18,9 @@ namespace RePlays.Recorders {
         public bool Connected { get; private set; }
         public bool DisplayCapture;
         public bool isStopping;
-        static string videoSavePath { get; set; } = "";
-        static string videoNameTimeStamp = "";
-        static IntPtr windowHandle = IntPtr.Zero;
-        static IntPtr output = IntPtr.Zero;
-
-        static Rect windowSize;
+        private IntPtr windowHandle = IntPtr.Zero;
+        private IntPtr output = IntPtr.Zero;
+        private Rect windowSize;
 
         Dictionary<string, IntPtr> audioSources = new(), videoSources = new();
         Dictionary<string, IntPtr> audioEncoders = new(), videoEncoders = new();
@@ -81,6 +78,20 @@ namespace RePlays.Recorders {
             new FileFormat("mp4", "MP4 (.mp4)", true),
             new FileFormat("mov", "QuickTime (.mov)", true)
         };
+
+#if WINDOWS
+        private string audioOutSourceId = "wasapi_output_capture";
+        private string audioInSourceId = "wasapi_input_capture";
+        private string audioProcessSourceId = "wasapi_process_output_capture";
+        private string audioEncoderId = "ffmpeg_aac";
+        private string videoSourceId = "game_capture";
+#else
+        private string audioOutSourceId = "pulse_output_capture";
+        private string audioInSourceId = "pulse_input_capture";
+        private string audioProcessSourceId = null;
+        private string audioEncoderId = "ffmpeg_aac";
+        private string videoSourceId = "xcomposite_input";
+#endif
 
         static bool signalOutputStop = false;
         static bool signalGCHookSuccess = false;
@@ -196,90 +207,189 @@ namespace RePlays.Recorders {
         const int maxRetryAttempts = 20; // 30 retries
         public override async Task<bool> StartRecording() {
             if (output != IntPtr.Zero) return false;
+            var session = RecordingService.GetCurrentSession();
+            windowHandle = session.WindowHandle;
 
             signalOutputStop = false;
-            int retryAttempt = 0;
-            var session = RecordingService.GetCurrentSession();
-
-            // If session is empty, this is a manual record attempt. Lets try to yolo record the foregroundwindow
-            if (session.Pid == 0 && WindowService.GetForegroundWindow(out int processId, out nint hwid)) {
-                if (processId != 0 || hwid != 0) {
-                    WindowService.GetExecutablePathFromProcessId(processId, out string executablePath);
-                    DetectionService.AutoDetectGame(processId, executablePath, hwid, autoRecord: false);
-                    session = RecordingService.GetCurrentSession();
-                }
-                else {
-                    return false;
-                }
-            }
-
-            // attempt to retrieve process's window handle to retrieve class name and window title
-            windowHandle = session.WindowHandle;
-            while ((DetectionService.HasBadWordInClassName(windowHandle) || windowHandle == IntPtr.Zero) && retryAttempt < maxRetryAttempts) {
-                Logger.WriteLine($"Waiting to retrieve process handle... retry attempt #{retryAttempt}");
-                await Task.Delay(retryInterval);
-                retryAttempt++;
-                // alternate on retry attempts, one or the other might get us a better handle
-                windowHandle = WindowService.GetWindowHandleByProcessId(session.Pid, retryAttempt % 2 == 1);
-            }
-            if (retryAttempt >= maxRetryAttempts) {
-                return false;
-            }
-            retryAttempt = 0;
-
-            string dir = Path.Join(GetPlaysFolder(), "/" + MakeValidFolderNameSimple(session.GameTitle) + "/");
-            try {
-                Directory.CreateDirectory(dir);
-            }
-            catch (Exception e) {
-                WebMessage.DisplayModal(string.Format("Unable to create folder {0}. Do you have permission to create it?", dir), "Recording Error", "warning");
-                Logger.WriteLine(e.ToString());
-                return false;
-            }
-            videoNameTimeStamp = DateTime.Now.ToString("yyyy_MM_dd_HH_mm_ss");
-
-            FileFormat currentFileFormat = SettingsService.Settings.captureSettings.fileFormat ?? (new FileFormat("mp4", "MP4 (.mp4)", true));
-            Logger.WriteLine($"Output file format: " + currentFileFormat.ToString());
-            videoSavePath = Path.Join(dir, videoNameTimeStamp + "-ses." + currentFileFormat.GetFileExtension());
-
+            GetFinalWindowSize();
+            Logger.WriteLine($"Preparing to create libobs output [{bnum_allocs()}]...");
+            SetupAudioSources(session);
             // Get the window class name
 #if WINDOWS
             var windowClassNameId = WindowService.GetWindowTitle(windowHandle) + ":" + WindowService.GetClassName(windowHandle) + ":" + Path.GetFileName(session.Exe);
 #else
             var windowClassNameId = windowHandle + "\r\n" + WindowService.GetWindowTitle(windowHandle) + "\r\n" + WindowService.GetClassName(windowHandle);
 #endif
-            // get game's window size and change output to match
-            windowSize = WindowService.GetWindowSize(windowHandle);
-            // sometimes, the inital window size might be in a middle of a transition, and gives us a weird dimension
-            // this is a quick a dirty check: if there aren't more than 1120 pixels, we can assume it needs a retry
-            while (windowSize.GetWidth() + windowSize.GetHeight() < 1120 && retryAttempt < maxRetryAttempts) {
-                Logger.WriteLine($"Waiting to retrieve correct window size (currently {windowSize.GetWidth()}x{windowSize.GetHeight()})... retry attempt #{retryAttempt}");
-                await Task.Delay(retryInterval);
-                retryAttempt++;
-                windowSize = WindowService.GetWindowSize(windowHandle);
-            }
-            if (windowSize.GetWidth() + windowSize.GetHeight() < 1120 && retryAttempt >= maxRetryAttempts) {
-                Logger.WriteLine($"Possible issue in getting correct window size {windowSize.GetWidth()}x{windowSize.GetHeight()}");
-                ResetVideo();
-            }
-            else {
-                Logger.WriteLine($"Game capture window size: {windowSize.GetWidth()}x{windowSize.GetHeight()}");
-                ResetVideo(windowHandle, windowSize.GetWidth(), windowSize.GetHeight());
+            string encoder = SettingsService.Settings.captureSettings.encoder;
+            string rateControl = SettingsService.Settings.captureSettings.rateControl;
+            string fileFormat = SettingsService.Settings.captureSettings.fileFormat.format;
+            if (!await SetupVideoSources(session, windowClassNameId, encoder, rateControl, fileFormat)) return false;
+            SetupOutput(session, encoder, fileFormat);
+
+            // some quick checks on initializations before starting output
+            if (!await InitializeEncoders()) return false;
+
+            // null check just incase
+            if (output == IntPtr.Zero) {
+                Logger.WriteLine("LibObs output returned null, something really went wrong (this isn't suppose to happen)...");
+                WebMessage.DisplayModal("An unexpected error occured. Detailed information written in logs.", "Recording Error", "warning");
+                ReleaseAll();
+                return false;
             }
 
-            Logger.WriteLine($"Preparing to create libobs output [{bnum_allocs()}]...");
-#if WINDOWS
-            string audioOutSourceId = "wasapi_output_capture";
-            string audioInSourceId = "wasapi_input_capture";
-            string audioProcessSourceId = "wasapi_process_output_capture";
-            string audioEncoderId = "ffmpeg_aac";
-            string videoSourceId = "game_capture";
-#else
-            string audioOutSourceId = "pulse_output_capture";
-            string audioInSourceId = "pulse_input_capture";
-            string audioEncoderId = "ffmpeg_aac";
-            string videoSourceId = "xcomposite_input";
-#endif
+            // preparations complete, launch the rocket
+            if (!BeginOutput(session, windowClassNameId)) return false;
+
+            IntegrationService.Start(session.GameTitle);
+            return true;
+        }
+
+        private bool BeginOutput(RecordingService.Session session, string windowClassNameId) {
+            Logger.WriteLine($"LibObs output is starting [{bnum_allocs()}]...");
+            bool outputStartSuccess = obs_output_start(output);
+            if (outputStartSuccess != true) {
+                string error = obs_output_get_last_error(output).Trim();
+                Logger.WriteLine("LibObs output recording error: '" + error + "'");
+                if (error.Length <= 0) {
+                    WebMessage.DisplayModal("An unexpected error occured. Detailed information written in logs.", "Recording Error", "warning");
+                }
+                else {
+                    WebMessage.DisplayModal(error, "Recording Error", "warning");
+                }
+                ReleaseAll();
+                return false;
+            }
+            Logger.WriteLine($"LibObs started recording [{session.Pid}] [{session.GameTitle}] [{windowClassNameId}]");
+            return true;
+        }
+
+        private async Task<bool> InitializeEncoders() {
+            bool canStartCapture = obs_output_can_begin_data_capture(output, 0);
+            int retryAttempt = 0;
+            if (!canStartCapture) {
+                while (!obs_output_initialize_encoders(output, 0) && retryAttempt < maxRetryAttempts) {
+                    Logger.WriteLine($"Waiting for encoders to finish initializing... retry attempt #{retryAttempt}");
+                    await Task.Delay(retryInterval);
+                    retryAttempt++;
+                }
+                if (retryAttempt >= maxRetryAttempts) {
+                    Logger.WriteLine("Unable to get encoders to initialize");
+                    ReleaseAll();
+                    return false;
+                }
+            }
+            return true;
+        }
+
+        private void SetupOutput(RecordingService.Session session, string encoder, string fileFormat) {
+            // SETUP NEW OUTPUT
+            if (SettingsService.Settings.captureSettings.useReplayBuffer) {
+                IntPtr bufferOutputSettings = obs_data_create();
+                obs_data_set_string(bufferOutputSettings, "directory", Path.GetDirectoryName(session.videoSavePath));
+                obs_data_set_string(bufferOutputSettings, "format", "%CCYY-%MM-%DD %hh-%mm-%ss-ses");
+                obs_data_set_string(bufferOutputSettings, "extension", fileFormat);
+                obs_data_set_int(bufferOutputSettings, "max_time_sec", SettingsService.Settings.captureSettings.replayBufferDuration);
+                obs_data_set_int(bufferOutputSettings, "max_size_mb", SettingsService.Settings.captureSettings.replayBufferSize);
+                output = obs_output_create("replay_buffer", "replay_buffer_output", bufferOutputSettings, IntPtr.Zero);
+
+                obs_data_release(bufferOutputSettings);
+            }
+            else {
+                output = obs_output_create("ffmpeg_muxer", "simple_ffmpeg_output", IntPtr.Zero, IntPtr.Zero);
+
+
+                // SETUP OUTPUT SETTINGS
+                IntPtr outputSettings = obs_data_create();
+                obs_data_set_string(outputSettings, "path", session.videoSavePath);
+                obs_output_update(output, outputSettings);
+                obs_data_release(outputSettings);
+            }
+            signal_handler_connect(obs_output_get_signal_handler(output), "stop", outputStopCb, IntPtr.Zero);
+
+            obs_output_set_video_encoder(output, videoEncoders[encoder]);
+            nuint idx = 0;
+            foreach (var audioEncoder in audioEncoders) {
+                obs_output_set_audio_encoder(output, audioEncoder.Value, idx);
+                idx++;
+            }
+        }
+
+        private async Task<bool> SetupVideoSources(RecordingService.Session session, string windowClassNameId, string encoder, string rateControl, string fileFormat) {
+            // SETUP VIDEO ENCODER
+            videoEncoders.TryAdd(encoder, GetVideoEncoder(encoder, rateControl, fileFormat));
+            obs_encoder_set_video(videoEncoders[encoder], obs_get_video());
+            int retryAttempt = 0;
+            if (session.ForceDisplayCapture == false) {
+                // SETUP NEW VIDEO SOURCE
+                // - Create a source for the game_capture in channel 0
+                IntPtr videoSourceSettings = obs_data_create();
+                obs_data_set_string(videoSourceSettings, "capture_mode", WindowService.IsFullscreen(windowHandle) ? "any_fullscreen" : "window");
+                obs_data_set_string(videoSourceSettings, "capture_window", windowClassNameId);
+                obs_data_set_string(videoSourceSettings, "window", windowClassNameId);
+                videoSources.TryAdd("gameplay", obs_source_create(videoSourceId, "gameplay", videoSourceSettings, IntPtr.Zero));
+                obs_data_release(videoSourceSettings);
+
+                obs_set_output_source(0, videoSources["gameplay"]);
+
+                // attempt to wait for game_capture source to hook first
+                if (videoSourceId == "game_capture") {
+                    Logger.WriteLine($"Waiting for successful graphics hook for [{windowClassNameId}]...");
+
+                    // SETUP HOOK SIGNAL HANDLERS
+                    signal_handler_connect(obs_output_get_signal_handler(videoSources["gameplay"]), "hooked", (data, cd) => {
+                        Logger.WriteLine("hooked");
+                    }, IntPtr.Zero);
+                    signal_handler_connect(obs_output_get_signal_handler(videoSources["gameplay"]), "unhooked", (data, cd) => {
+                        Logger.WriteLine("unhooked");
+                    }, IntPtr.Zero);
+
+                    while (signalGCHookSuccess == false && retryAttempt < Math.Min(maxRetryAttempts + signalGCHookAttempt, 30)) {
+                        await Task.Delay(retryInterval);
+                        retryAttempt++;
+                    }
+                }
+            }
+            signalGCHookAttempt = 0;
+            if (videoSourceId == "game_capture" && signalGCHookSuccess == false) {
+                if (session.ForceDisplayCapture == false) {
+                    Logger.WriteLine($"Unable to get graphics hook for [{windowClassNameId}] after {retryAttempt} attempts");
+                }
+
+                Process process;
+
+                try {
+                    process = Process.GetProcessById(session.Pid);
+                }
+                catch {
+                    ReleaseAll();
+                    return false;
+                }
+
+                //This is due to a bug in System.Diagnostics.Process (process.HasExited) Class https://www.giorgi.dev/net/access-denied-process-bugs/
+                bool processHasExited = false;
+                try {
+                    processHasExited = process.HasExited;
+                }
+                catch (Exception ex) {
+                    Logger.WriteLine("Could not get process exit status: " + ex.ToString());
+                }
+                ReleaseOutput();
+                ReleaseSources();
+                ReleaseEncoders();
+
+                if (SettingsService.Settings.captureSettings.useDisplayCapture && !processHasExited) {
+                    Logger.WriteLine("Attempting to use display capture instead");
+                    StartDisplayCapture();
+                }
+                else {
+                    ReleaseAll();
+                    return false;
+                }
+            }
+            return true;
+        }
+
+        private void SetupAudioSources(RecordingService.Session session) {
             // SETUP NEW AUDIO SOURCES & ENCODERS
             // - Create sources for output and input devices
             // TODO: isolate game audio and discord app audio
@@ -347,173 +457,28 @@ namespace RePlays.Recorders {
                         Logger.WriteLine($"[Warning] Exceeding 6 audio sources ({index + totalDevices + 1}), cannot add another track (max = 6)");
                 }
             }
-
-            string encoder = SettingsService.Settings.captureSettings.encoder;
-            string rateControl = SettingsService.Settings.captureSettings.rateControl;
-            string fileFormat = SettingsService.Settings.captureSettings.fileFormat.format;
-
-            if (session.ForceDisplayCapture == false) {
-                // SETUP NEW VIDEO SOURCE
-                // - Create a source for the game_capture in channel 0
-                IntPtr videoSourceSettings = obs_data_create();
-                obs_data_set_string(videoSourceSettings, "capture_mode", WindowService.IsFullscreen(windowHandle) ? "any_fullscreen" : "window");
-                obs_data_set_string(videoSourceSettings, "capture_window", windowClassNameId);
-                obs_data_set_string(videoSourceSettings, "window", windowClassNameId);
-                videoSources.TryAdd("gameplay", obs_source_create(videoSourceId, "gameplay", videoSourceSettings, IntPtr.Zero));
-                obs_data_release(videoSourceSettings);
-
-                // SETUP VIDEO ENCODER
-                videoEncoders.TryAdd(encoder, GetVideoEncoder(encoder, rateControl, fileFormat));
-                obs_encoder_set_video(videoEncoders[encoder], obs_get_video());
-                obs_set_output_source(0, videoSources["gameplay"]);
-
-                // attempt to wait for game_capture source to hook first
-                if (videoSourceId == "game_capture") {
-                    retryAttempt = 0;
-                    Logger.WriteLine($"Waiting for successful graphics hook for [{windowClassNameId}]...");
-
-                    // SETUP HOOK SIGNAL HANDLERS
-                    signal_handler_connect(obs_output_get_signal_handler(videoSources["gameplay"]), "hooked", (data, cd) => {
-                        Logger.WriteLine("hooked");
-                    }, IntPtr.Zero);
-                    signal_handler_connect(obs_output_get_signal_handler(videoSources["gameplay"]), "unhooked", (data, cd) => {
-                        Logger.WriteLine("unhooked");
-                    }, IntPtr.Zero);
-
-                    while (signalGCHookSuccess == false && retryAttempt < Math.Min(maxRetryAttempts + signalGCHookAttempt, 30)) {
-                        await Task.Delay(retryInterval);
-                        retryAttempt++;
-                    }
-                }
-            }
-            else {
-                videoEncoders.TryAdd(encoder, GetVideoEncoder(encoder, rateControl, fileFormat));
-                obs_encoder_set_video(videoEncoders[encoder], obs_get_video());
-            }
-            signalGCHookAttempt = 0;
-
-            if (videoSourceId == "game_capture" && signalGCHookSuccess == false) {
-                if (session.ForceDisplayCapture == false) {
-                    Logger.WriteLine($"Unable to get graphics hook for [{windowClassNameId}] after {retryAttempt} attempts");
-                }
-
-                Process process;
-
-                try {
-                    process = Process.GetProcessById(session.Pid);
-                }
-                catch {
-                    ReleaseOutput();
-                    ReleaseSources();
-                    ReleaseEncoders();
-                    return false;
-                }
-
-                //This is due to a bug in System.Diagnostics.Process (process.HasExited) Class https://www.giorgi.dev/net/access-denied-process-bugs/
-                bool processHasExited = false;
-                try {
-                    processHasExited = process.HasExited;
-                }
-                catch (Exception ex) {
-                    Logger.WriteLine("Could not get process exit status: " + ex.ToString());
-                }
-
-                if (SettingsService.Settings.captureSettings.useDisplayCapture && !processHasExited) {
-                    Logger.WriteLine("Attempting to use display capture instead");
-                    StartDisplayCapture();
-                }
-                else {
-                    ReleaseOutput();
-                    ReleaseSources();
-                    ReleaseEncoders();
-                    return false;
-                }
-            }
-            retryAttempt = 0;
-
-            // SETUP NEW OUTPUT
-            if (SettingsService.Settings.captureSettings.useReplayBuffer) {
-                IntPtr bufferOutputSettings = obs_data_create();
-                obs_data_set_string(bufferOutputSettings, "directory", dir);
-                obs_data_set_string(bufferOutputSettings, "format", "%CCYY-%MM-%DD %hh-%mm-%ss-ses");
-                obs_data_set_string(bufferOutputSettings, "extension", fileFormat);
-                obs_data_set_int(bufferOutputSettings, "max_time_sec", SettingsService.Settings.captureSettings.replayBufferDuration);
-                obs_data_set_int(bufferOutputSettings, "max_size_mb", SettingsService.Settings.captureSettings.replayBufferSize);
-                output = obs_output_create("replay_buffer", "replay_buffer_output", bufferOutputSettings, IntPtr.Zero);
-
-                obs_data_release(bufferOutputSettings);
-            }
-            else {
-                output = obs_output_create("ffmpeg_muxer", "simple_ffmpeg_output", IntPtr.Zero, IntPtr.Zero);
-
-
-                // SETUP OUTPUT SETTINGS
-                IntPtr outputSettings = obs_data_create();
-                obs_data_set_string(outputSettings, "path", videoSavePath);
-                obs_output_update(output, outputSettings);
-                obs_data_release(outputSettings);
-            }
-            signal_handler_connect(obs_output_get_signal_handler(output), "stop", outputStopCb, IntPtr.Zero);
-
-            obs_output_set_video_encoder(output, videoEncoders[encoder]);
-            nuint idx = 0;
-            foreach (var audioEncoder in audioEncoders) {
-                obs_output_set_audio_encoder(output, audioEncoder.Value, idx);
-                idx++;
-            }
-
-            // some quick checks on initializations before starting output
-            bool canStartCapture = obs_output_can_begin_data_capture(output, 0);
-            if (!canStartCapture) {
-                while (!obs_output_initialize_encoders(output, 0) && retryAttempt < maxRetryAttempts) {
-                    Logger.WriteLine($"Waiting for encoders to finish initializing... retry attempt #{retryAttempt}");
-                    await Task.Delay(retryInterval);
-                    retryAttempt++;
-                }
-                if (retryAttempt >= maxRetryAttempts) {
-                    Logger.WriteLine("Unable to get encoders to initialize");
-                    ReleaseOutput();
-                    ReleaseSources();
-                    ReleaseEncoders();
-                    return false;
-                }
-            }
-            retryAttempt = 0;
-
-            // another null check just incase
-            if (output == IntPtr.Zero) {
-                Logger.WriteLine("LibObs output returned null, something really went wrong (this isn't suppose to happen)...");
-                WebMessage.DisplayModal("An unexpected error occured. Detailed information written in logs.", "Recording Error", "warning");
-                ReleaseOutput();
-                ReleaseSources();
-                ReleaseEncoders();
-                return false;
-            }
-
-            // preparations complete, launch the rocket
-            Logger.WriteLine($"LibObs output is starting [{bnum_allocs()}]...");
-            bool outputStartSuccess = obs_output_start(output);
-            if (outputStartSuccess != true) {
-                string error = obs_output_get_last_error(output).Trim();
-                Logger.WriteLine("LibObs output recording error: '" + error + "'");
-                if (error.Length <= 0) {
-                    WebMessage.DisplayModal("An unexpected error occured. Detailed information written in logs.", "Recording Error", "warning");
-                }
-                else {
-                    WebMessage.DisplayModal(error, "Recording Error", "warning");
-                }
-                ReleaseOutput();
-                ReleaseSources();
-                ReleaseEncoders();
-                return false;
-            }
-            else {
-                Logger.WriteLine($"LibObs started recording [{session.Pid}] [{session.GameTitle}] [{windowClassNameId}]");
-            }
-
-            IntegrationService.Start(session.GameTitle);
-            return true;
         }
+        private async void GetFinalWindowSize() {
+            int retryAttempt = 0;
+            windowSize = WindowService.GetWindowSize(windowHandle);
+            // sometimes, the inital window size might be in a middle of a transition, and gives us a weird dimension
+            // this is a quick a dirty check: if there aren't more than 1120 pixels, we can assume it needs a retry
+            while (windowSize.GetWidth() + windowSize.GetHeight() < 1120 && retryAttempt < maxRetryAttempts) {
+                Logger.WriteLine($"Waiting to retrieve correct window size (currently {windowSize.GetWidth()}x{windowSize.GetHeight()})... retry attempt #{retryAttempt}");
+                await Task.Delay(retryInterval);
+                retryAttempt++;
+                windowSize = WindowService.GetWindowSize(windowHandle);
+            }
+            if (windowSize.GetWidth() + windowSize.GetHeight() < 1120 && retryAttempt >= maxRetryAttempts) {
+                Logger.WriteLine($"Possible issue in getting correct window size {windowSize.GetWidth()}x{windowSize.GetHeight()}");
+                ResetVideo();
+            }
+            else {
+                Logger.WriteLine($"Game capture window size: {windowSize.GetWidth()}x{windowSize.GetHeight()}");
+                ResetVideo(windowHandle, windowSize.GetWidth(), windowSize.GetHeight());
+            }
+        }
+
 
         private void StartDisplayCapture() {
             ReleaseVideoSources();
@@ -777,20 +742,18 @@ namespace RePlays.Recorders {
             bool isReplayBuffer = IsUsingReplayBuffer();
 
             // CLEANUP
-            ReleaseOutput();
-            ReleaseSources();
-            ReleaseEncoders();
+            ReleaseAll();
 
             DisplayCapture = false;
 
             if (!isReplayBuffer) {
-                Logger.WriteLine($"Session recording saved to {videoSavePath}");
-                RecordingService.lastVideoDuration = GetVideoDuration(videoSavePath);
+                Logger.WriteLine($"Session recording saved to {session.videoSavePath}");
+                RecordingService.lastVideoDuration = GetVideoDuration(session.videoSavePath);
             }
 
             if (IntegrationService.ActiveGameIntegration is LeagueOfLegendsIntegration lol) {
-                GetOrCreateMetadata(videoSavePath);
-                lol.UpdateMetadataWithStats(videoSavePath);
+                GetOrCreateMetadata(session.videoSavePath);
+                lol.UpdateMetadataWithStats(session.videoSavePath);
             }
 
 #if RELEASE && WINDOWS
@@ -808,13 +771,13 @@ namespace RePlays.Recorders {
 #endif
             IntegrationService.Shutdown();
             if (!isReplayBuffer)
-                BookmarkService.ApplyBookmarkToSavedVideo("/" + Path.GetFileName(videoSavePath));
+                BookmarkService.ApplyBookmarkToSavedVideo("/" + Path.GetFileName(session.videoSavePath));
 
             Logger.WriteLine($"LibObs stopped recording {session.Pid} {session.GameTitle} [{bnum_allocs()}]");
             return !signalOutputStop;
         }
 
-        private static void RestartRecording() {
+        private void RestartRecording() {
             if (output == IntPtr.Zero) return;
             RecordingService.RestartRecording();
         }
@@ -880,6 +843,12 @@ namespace RePlays.Recorders {
             if (resetVideoCode != 0) {
                 throw new Exception("error on libobs reset video: " + ((VideoResetError)resetVideoCode).ToString());
             }
+        }
+
+        public void ReleaseAll() {
+            ReleaseSources();
+            ReleaseEncoders();
+            ReleaseOutput();
         }
 
         public void ReleaseSources() {

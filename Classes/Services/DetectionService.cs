@@ -256,7 +256,7 @@ namespace RePlays.Services {
                 bool allowed = SettingsService.Settings.captureSettings.recordingMode is "automatic" or "whitelist";
                 Logger.WriteLine($"{(allowed ? "Starting capture for" : "Ready to capture")} application: {detailedWindowStr}");
                 RecordingService.SetCurrentSession(processId, windowHandle, gameTitle, executablePath, gameDetection.forceDisplayCapture);
-                if (allowed) RecordingService.StartRecording();
+                if (allowed) RecordingService.StartRecording(false);
             }
             return isGame;
         }

@@ -754,33 +754,33 @@ namespace RePlays.Utils {
 
         public static string? GetGpuManufacturer() {
 #if !WINDOWS
-                try {
-                    ProcessStartInfo psi = new ProcessStartInfo {
-                        FileName = "lspci",
-                        Arguments = "-nn | grep VGA",
-                        RedirectStandardOutput = true,
-                        UseShellExecute = false,
-                        CreateNoWindow = true
-                    };
-                    using (Process proc = new Process { StartInfo = psi }) {
-                        proc.Start();
-                        string output = proc.StandardOutput.ReadToEnd();
-                        proc.WaitForExit();
-                        if (output.Contains("NVIDIA", StringComparison.OrdinalIgnoreCase)) {
-                            return "NVIDIA";
-                        }
-                        else if (output.Contains("AMD", StringComparison.OrdinalIgnoreCase) || output.Contains("ATI", StringComparison.OrdinalIgnoreCase)) {
-                            return "AMD";
-                        }
-                        else if (output.Contains("Intel", StringComparison.OrdinalIgnoreCase)) {
-                            return "Intel";
-                        }
+            try {
+                ProcessStartInfo psi = new ProcessStartInfo {
+                    FileName = "lspci",
+                    Arguments = "-nn | grep VGA",
+                    RedirectStandardOutput = true,
+                    UseShellExecute = false,
+                    CreateNoWindow = true
+                };
+                using (Process proc = new Process { StartInfo = psi }) {
+                    proc.Start();
+                    string output = proc.StandardOutput.ReadToEnd();
+                    proc.WaitForExit();
+                    if (output.Contains("NVIDIA", StringComparison.OrdinalIgnoreCase)) {
+                        return "NVIDIA";
+                    }
+                    else if (output.Contains("AMD", StringComparison.OrdinalIgnoreCase) || output.Contains("ATI", StringComparison.OrdinalIgnoreCase)) {
+                        return "AMD";
+                    }
+                    else if (output.Contains("Intel", StringComparison.OrdinalIgnoreCase)) {
+                        return "Intel";
                     }
                 }
-                catch (Exception ex) {
-                    Logger.WriteLine($"Error detecting GPU type on Linux: {ex.Message}");
-                }
-                return null;
+            }
+            catch (Exception ex) {
+                Logger.WriteLine($"Error detecting GPU type on Linux: {ex.Message}");
+            }
+            return null;
 #else
             try {
                 using (var searcher = new ManagementObjectSearcher("SELECT * FROM Win32_VideoController")) {
