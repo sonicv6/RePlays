@@ -1,0 +1,80 @@
+@using RePlays.Utils
+@using RePlays.Classes.RazorTemplates.Components
+@using static RePlays.Utils.Functions;
+
+@code {
+	[Parameter]
+	public string game { get; set; }
+	[Parameter]
+	public string sortBy { get; set; }
+	[Parameter]
+	public bool isRePlaysWebView { get; set; }
+}
+
+@{
+	VideoList videoList = GetAllVideos(game, sortBy, true, isRePlaysWebView);
+}
+
+<div hx-swap-oob="innerHTML:#sessions-page">
+    <script>
+        $sn.add('sessionsSortControls', {
+            id: 'sessionsSortControls',
+            selector: '#sessionsSortControls .focusable',
+            enterTo: 'last-focused'
+        });
+
+        $sn.add('sessionsList', {
+            id: 'sessionsList',
+            selector: '#sessionsList .focusable',
+            enterTo: 'last-focused',
+            leaveFor: {
+                left: '@@sessionsSortControls',
+                right: '@@sessionsSortControls'
+            }
+        });
+    </script>
+    <div class="flex flex-col h-full">
+        <header class="py-5 bg-gray-700">
+            <VideoSortControls type="sessions" games="@videoList.games" size="@videoList.sessionsSize" game="@game" sortBy="@sortBy" />
+        </header>
+        <main class="flex-1 overflow-y-auto p-5 scroll-smooth">
+            <div id="sessionsList" class="gap-x-8 gap-y-8 grid grid-flow-row sm:grid-cols-2 md:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5">
+                @foreach (var video in videoList.sessions) {
+                    <VideoCard video="@video" />
+                }
+            </div>
+        </main>
+    </div>
+</div>
+
+<div hx-swap-oob="innerHTML:#clips-page">
+    <script>
+        $sn.add('clipsSortControls', {
+            id: 'clipsSortControls',
+            selector: '#clipsSortControls .focusable',
+            enterTo: 'last-focused'
+        });
+
+        $sn.add('clipsList', {
+            id: 'clipsList',
+            selector: '#clipsList .focusable',
+            enterTo: 'last-focused',
+            leaveFor: {
+                left: '@@clipsSortControls',
+                right: '@@clipsSortControls'
+            }
+        });
+    </script>
+    <div class="flex flex-col h-full">
+        <header class="py-5 bg-gray-700">
+            <VideoSortControls type="clips" games="@videoList.games" size="@videoList.clipsSize" game="@game" sortBy="@sortBy" />
+        </header>
+        <main class="flex-1 overflow-y-auto p-5 scroll-smooth">
+            <div id="clipsList" class="gap-x-8 gap-y-8 grid grid-flow-row sm:grid-cols-2 md:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5">
+                @foreach (var video in videoList.clips) {
+                    <VideoCard video="@video" />
+                }
+            </div>
+        </main>
+    </div>
+</div>

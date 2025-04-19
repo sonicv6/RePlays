@@ -1,3 +1,9 @@
+using Microsoft.AspNetCore.Components;
+using Microsoft.AspNetCore.Components.Web;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
+using RePlays.Classes.RazorTemplates;
+using RePlays.Classes.RazorTemplates.Components;
 using RePlays.Classes.Utils;
 using RePlays.Recorders;
 using RePlays.Services;
@@ -142,7 +148,35 @@ namespace RePlays.Utils {
             sortBy = "Latest"
         };
 
-        public static bool SendMessage(string message) {
+        public static class HtmlRendererFactory {
+            private static ServiceProvider? _serviceProvider;
+
+            public static async Task<HtmlRenderer> CreateHtmlRendererAsync() {
+                if (_serviceProvider == null) {
+                    var services = new ServiceCollection();
+                    services.AddLogging();
+                    _serviceProvider = services.BuildServiceProvider();
+                }
+
+                var loggerFactory = _serviceProvider.GetRequiredService<ILoggerFactory>();
+                return await Task.FromResult(new HtmlRenderer(_serviceProvider, loggerFactory));
+            }
+
+            public static async Task<string> RenderHtmlAsync<TComponent>() where TComponent : IComponent {
+                var parameters = new Dictionary<string, object?> {
+                };
+                return await RenderHtmlAsync<TComponent>(ParameterView.FromDictionary(parameters));
+            }
+
+            public static async Task<string> RenderHtmlAsync<TComponent>(ParameterView parameters) where TComponent : IComponent {
+                await using var htmlRenderer = await CreateHtmlRendererAsync();
+                return await htmlRenderer.Dispatcher.InvokeAsync(async () =>
+                    (await htmlRenderer.RenderComponentAsync<TComponent>(parameters)).ToHtmlString()
+                );
+            }
+        }
+
+        public static bool SendMessage(string message, string html = "") {
             List<WebSocket> activeSockets = WebServer.GetActiveSockets();
             foreach (var socket in activeSockets) {
                 var responseMessage = Encoding.UTF8.GetBytes(message);
@@ -159,7 +193,14 @@ namespace RePlays.Utils {
                 }));
             }
             else {
-                WindowsInterface.webView2.CoreWebView2.PostWebMessageAsJson(message);
+                if (html == "") {
+                    WindowsInterface.webView2.CoreWebView2.PostWebMessageAsJson(message);
+                }
+                else {
+                    var messageData = new { message, html };
+                    var jsonData = JsonSerializer.Serialize(messageData);
+                    WindowsInterface.webView2.CoreWebView2.PostWebMessageAsJson(jsonData);
+                }
                 return true;
             }
 #endif
@@ -191,6 +232,14 @@ namespace RePlays.Utils {
                         break;
                     }
                 case "Initialize": {
+                        // INIT APP
+                        var html = HtmlRendererFactory.RenderHtmlAsync<App>().Result;
+                        WebMessage app = new() {
+                            message = "Initialize",
+                            data = html
+                        };
+                        SendMessage(JsonSerializer.Serialize(app));
+
                         // INIT USER SETTINGS
                         SendMessage(GetUserSettings());
 
@@ -445,15 +494,17 @@ namespace RePlays.Utils {
             return webMessage;
         }
 
-        public static async void DisplayModal(string context, string title = "Title", string icon = "none", long progress = 0, long progressMax = 0) {
-            WebMessage webMessage = new();
-            webMessage.message = "DisplayModal";
-            webMessage.data = "{" +
-                "\"context\": \"" + context + "\", " +
-                "\"title\": \"" + title + "\", " +
-                "\"progress\": " + progress + ", " +
-                "\"progressMax\": " + progressMax + ", " +
-                "\"icon\": \"" + icon + "\"}";
+        public static async void DisplayModal(string context, string title = "Title", string icon = "none") {
+            var parameters = new Dictionary<string, object?> {
+                [nameof(context)] = context,
+                [nameof(title)] = title,
+                [nameof(icon)] = icon,
+            };
+            var html = HtmlRendererFactory.RenderHtmlAsync<Modal>(ParameterView.FromDictionary(parameters)).Result;
+            WebMessage webMessage = new() {
+                message = "DisplayModal",
+                data = html
+            };
 
             bool success = SendMessage(JsonSerializer.Serialize(webMessage));
             if (!success) {
@@ -463,15 +514,19 @@ namespace RePlays.Utils {
         }
 
         public static void DisplayToast(string id, string context, string title = "Title", string icon = "none", long progress = 0, long progressMax = 0) {
-            WebMessage webMessage = new();
-            webMessage.message = "DisplayToast";
-            webMessage.data = "{" +
-                "\"id\": \"" + id + "\", " +
-                "\"context\": \"" + context + "\", " +
-                "\"title\": \"" + title + "\", " +
-                "\"progress\": " + progress + ", " +
-                "\"progressMax\": " + progressMax + ", " +
-                "\"icon\": \"" + icon + "\"}";
+            var parameters = new Dictionary<string, object?> {
+                [nameof(id)] = id,
+                [nameof(context)] = context,
+                [nameof(title)] = title,
+                [nameof(icon)] = icon,
+                [nameof(progress)] = progress,
+                [nameof(progressMax)] = progressMax
+            };
+            var html = HtmlRendererFactory.RenderHtmlAsync<Toast>(ParameterView.FromDictionary(parameters)).Result;
+            WebMessage webMessage = new() {
+                message = "DisplayToast",
+                data = html
+            };
 
             if (toastList.ContainsKey(id)) {
                 if (toastList[id].data == webMessage.data) return; // prevents message flooding if toast is identical
@@ -486,10 +541,15 @@ namespace RePlays.Utils {
             if (toastList.ContainsKey(id))
                 toastList.Remove(id);
 
-            WebMessage webMessage = new();
-            webMessage.message = "DestroyToast";
-            webMessage.data = "{" +
-                "\"id\": \"" + id + "\"}";
+            var parameters = new Dictionary<string, object?> {
+                [nameof(id)] = id,
+                ["context"] = "",
+            };
+            var html = HtmlRendererFactory.RenderHtmlAsync<Toast>(ParameterView.FromDictionary(parameters)).Result;
+            WebMessage webMessage = new() {
+                message = "DestroyToast",
+                data = html
+            };
             SendMessage(JsonSerializer.Serialize(webMessage));
         }
 

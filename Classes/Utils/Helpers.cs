@@ -1,3 +1,5 @@
+using Microsoft.AspNetCore.Components;
+using RePlays.Classes.RazorTemplates;
 using RePlays.Recorders;
 using RePlays.Services;
 using System;
@@ -9,12 +11,14 @@ using System.Linq;
 using System.Management;
 using System.Net.Http;
 using System.Numerics;
+using System.Reflection.Metadata;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
 using System.Text.RegularExpressions;
 using System.Threading.Tasks;
 using System.Timers;
+using static RePlays.Utils.WebMessage;
 using Process = System.Diagnostics.Process;
 using Timer = System.Timers.Timer;
 
@@ -66,12 +70,9 @@ namespace RePlays.Utils {
 
         public static string GetRePlaysURI() {
 #if DEBUG 
-            if (GetProgramArgs().Any("--use-build-ui".Contains)) {
-                return "file://" + GetSolutionPath() + "/ClientApp/build/index.html";
-            }
-            return "http://localhost:3000/#/";
+            return "file://" + GetSolutionPath() + "/wwwroot/index.html";
 #else
-            return "file://" + GetStartupPath() + "/ClientApp/build/index.html";
+            return "file://" + GetStartupPath() + "/wwwroot/index.html";
 #endif
         }
 
@@ -86,25 +87,14 @@ namespace RePlays.Utils {
             if (!DriveInfo.GetDrives().Where(drive => drive.Name.StartsWith(videoSaveDir[..1])).Any()) {
                 SettingsService.Settings.storageSettings.videoSaveDir = Path.Join(Environment.GetFolderPath(Environment.SpecialFolder.MyVideos), "Plays");
                 SettingsService.SaveSettings();
-#if WINDOWS
-                if (WindowsInterface.webView2 == null) {
-                    Task.Run(() => SendDisplayModalWithDelay("The program was unable to access the drive. As a result, the storage location has been reverted to the default location.", "Drive Disconnected", "info", 10000));
-                }
-                else {
-                    WebMessage.DisplayModal("The program was unable to access the drive. As a result, the storage location has been reverted to the default location.", "Drive Disconnected", "info");
-                }
-#endif
+
+                WebMessage.DisplayModal("The program was unable to access the drive. As a result, the storage location has been reverted to the default location.", "Drive Disconnected", "info");
                 return SettingsService.Settings.storageSettings.videoSaveDir.Replace('\\', '/');
             }
 
             if (!Directory.Exists(videoSaveDir))
                 Directory.CreateDirectory(videoSaveDir);
             return videoSaveDir;
-        }
-
-        public static async Task SendDisplayModalWithDelay(string context, string title, string icon, int delay) {
-            await Task.Delay(delay);
-            WebMessage.DisplayModal(context, title, icon);
         }
 
         public static string GetTempFolder() {
@@ -215,19 +205,23 @@ namespace RePlays.Utils {
         public static string GetUserSettings() {
             SettingsService.LoadSettings();
 
+            var html = HtmlRendererFactory.RenderHtmlAsync<SettingsPage>().Result;
             WebMessage webMessage = new() {
                 message = "UserSettings",
-                data = JsonSerializer.Serialize(SettingsService.Settings)
+                data = html
             };
             return JsonSerializer.Serialize(webMessage);
         }
 
         public static string GetAllVideos(string game, string sortBy, bool isRePlaysWebView = false) {
-            VideoList videoList = GetAllVideos(game, sortBy, true, isRePlaysWebView);
-            if (videoList == null) return "{}";
+            var parameters = new Dictionary<string, object?> {
+                [nameof(game)] = game,
+                [nameof(sortBy)] = sortBy
+            };
+            var html = HtmlRendererFactory.RenderHtmlAsync<VideosPage>(ParameterView.FromDictionary(parameters)).Result;
             WebMessage webMessage = new() {
                 message = "RetrieveVideos",
-                data = JsonSerializer.Serialize(videoList)
+                data = html
             };
             return JsonSerializer.Serialize(webMessage);
         }
@@ -293,7 +287,7 @@ namespace RePlays.Utils {
                 };
 
 #if DEBUG && WINDOWS
-                video.folder = "http://localhost:3001/"; // if not using web server: https://videos.replays.app/
+                video.folder = "https://videos.replays.app/";
 #else
                 if (isRePlaysWebView)
                     video.folder = "file://" + Path.GetFullPath(Path.Combine(Path.GetDirectoryName(file.FullName), "..")).Replace("\\", "/");
