@@ -26,7 +26,7 @@ namespace RePlays.Classes.Utils {
 #if RELEASE
             string webRootDir = Path.Join(Functions.GetStartupPath(), "/ClientApp/build/");
 #else
-            string webRootDir = Path.Join(Functions.GetSolutionPath(), "/ClientApp/build/");
+            string webRootDir = Path.Join(Functions.GetSolutionPath(), "/wwwroot/");
 #endif
             if (!Path.Exists(webRootDir)) webRootDir = Functions.GetPlaysFolder();
 

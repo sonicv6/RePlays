@@ -90,6 +90,7 @@ namespace RePlays.Recorders {
 #else
         const string audioOutSourceId = "pulse_output_capture";
         const string audioInSourceId = "pulse_input_capture";
+        const string audioProcessSourceId = "";
         const string audioEncoderId = "ffmpeg_aac";
         const string videoSourceId = "xcomposite_input";
 #endif
@@ -102,6 +103,9 @@ namespace RePlays.Recorders {
 
         [DllImport("libX11", EntryPoint = "XOpenDisplay")]
         public static extern IntPtr XOpenDisplay(IntPtr display);
+
+        [DllImport("libwayland-client", EntryPoint = "wl_display_connect")]
+        public static extern IntPtr wl_display_connect([MarshalAs(UnmanagedType.LPStr)] string name);
 
         public override void Start() {
             if (Connected) return;
@@ -119,8 +123,8 @@ namespace RePlays.Recorders {
             }
 
 #if !WINDOWS
-            obs_set_nix_platform(obs_nix_platform_type.OBS_NIX_PLATFORM_X11_EGL);
-            obs_set_nix_platform_display(XOpenDisplay(IntPtr.Zero));
+            obs_set_nix_platform(obs_nix_platform_type.OBS_NIX_PLATFORM_WAYLAND);
+            obs_set_nix_platform_display(wl_display_connect(null));
             base_set_log_handler(null, IntPtr.Zero);
 #else
             // Warning: if you try to access methods/vars/etc. that are not static within the log handler,
@@ -817,28 +821,28 @@ namespace RePlays.Recorders {
             var screenWidth = screen.Bounds.Width;
             var screenHeight = screen.Bounds.Height;
 #else
-            var screenWidth = 1920;
-            var screenHeight = 1080;
+            var screenWidth = 3440;
+            var screenHeight = 1440;
 #endif
 
             obs_video_info ovi = new() {
-                adapter = 0,
 #if WINDOWS
                 graphics_module = "libobs-d3d11",
 #else
                 graphics_module = "libobs-opengl",
 #endif
+                adapter = 0,
                 fps_num = (uint)captureSettings.frameRate,
                 fps_den = 1,
                 base_width = (uint)(outputWidth > 1 ? outputWidth : screenWidth),
                 base_height = (uint)(outputHeight > 1 ? outputHeight : screenHeight),
                 output_width = (uint)(outputWidth > 1 ? Convert.ToInt32(captureSettings.resolution * screenRatio) : screenWidth),
                 output_height = (uint)(outputHeight > 1 ? captureSettings.resolution : screenHeight),
-                output_format = video_format.VIDEO_FORMAT_NV12,
+                output_format = video_format.VIDEO_FORMAT_NONE,
                 gpu_conversion = true,
                 colorspace = video_colorspace.VIDEO_CS_DEFAULT,
                 range = video_range_type.VIDEO_RANGE_DEFAULT,
-                scale_type = obs_scale_type.OBS_SCALE_BILINEAR
+                scale_type = obs_scale_type.OBS_SCALE_DISABLE
             };
             int resetVideoCode = obs_reset_video(ref ovi);
             if (resetVideoCode != 0) {

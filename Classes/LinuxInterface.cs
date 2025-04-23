@@ -6,6 +6,10 @@ using System.IO;
 using System.Runtime.InteropServices;
 using System.Threading;
 using static RePlays.Utils.Functions;
+using System.Runtime.InteropServices.Marshalling;
+using System.Net;
+using System.Net.Sockets;
+using RePlays.Classes.Utils;
 
 namespace RePlays {
 #if !WINDOWS
@@ -14,137 +18,162 @@ namespace RePlays {
         static readonly string icon = Path.Join(GetSolutionPath(), "/Resources/logo.svg");
 #endif
         static IntPtr window;
-        public static void Create() {
-            int argc = 0;
-            IntPtr argv = IntPtr.Zero;
-            GTK.gtk_init(ref argc, ref argv);
+        private static Socket listener;
 
-            if (!SettingsService.Settings.generalSettings.startMinimized)
-                InitializeWebView();
+        delegate void ActivateCallback(IntPtr app, IntPtr user_data);
+
+        public static IntPtr webView;
+
+        public static void Activate(IntPtr app, IntPtr user_data) {
+            IntPtr window;
+            window = GTK4.gtk_window_new();
+            //GTK4.gtk_window_set_title(window, "RePlays");
+            //GTK4.gtk_window_set_default_size(window, 1080, 600);
+            GTK4.gtk_window_set_default_size(window, 1080, 600);
+            GTK4.gtk_window_present(window);
+        }
+        public static void Create() {
+            //IntPtr app = GTK4.gtk_application_new("org.RePlays.RePlaysApp", 0);
+            // Initialize GTK
+            //GTK4.g_signal_connect(app, "activate", Marshal.GetFunctionPointerForDelegate(new ActivateCallback(Activate)), IntPtr.Zero);
+            GTK4.gtk_init();
+            window = GTK4.gtk_window_new();
+            GTK4.gtk_window_set_title(window, "RePlays");
+            GTK4.gtk_window_set_default_size(window, 1080, 600);
+            //GTK4.gtk_window_set_default_size(window, 1080, 600);
+            //GTK4.gtk_window_set_title(window, "RePlays");
+            //GTK4.gtk_window_present(window);
+
+            InitializeWebView();
+
+            while (true) {
+                GTK4.g_main_context_iteration(IntPtr.Zero, false);
+            }
+
+
+
+
+
+            //if (!SettingsService.Settings.generalSettings.startMinimized) InitializeWebView();
 
             // Create a new GTK menu
-            IntPtr menu = GTK.gtk_menu_new();
+            //             IntPtr menu = GTK.gtk_menu_new();
 
-            // Create menu item to open interface
-            IntPtr openMenuItem = GTK.gtk_menu_item_new_with_label("Open");
-            GTK.g_signal_connect_data(openMenuItem, "activate",
-                new GTK.ActivateCallback((_, _) => {
-                    InitializeWebView();
-                }),
-                Marshal.StringToHGlobalAnsi("Open"),
-                IntPtr.Zero,
-                GTK.GConnectFlags.G_CONNECT_AFTER
-            );
-            GTK.gtk_menu_shell_append(menu, openMenuItem);
-            GTK.gtk_widget_show(openMenuItem);
+            //             // Create menu item to open interface
+            //             IntPtr openMenuItem = GTK.gtk_menu_item_new_with_label("Open");
+            //             GTK.g_signal_connect_data(openMenuItem, "activate",
+            //                 new GTK.ActivateCallback((_, _) => {
+            //                     InitializeWebView();
+            //                 }),
+            //                 Marshal.StringToHGlobalAnsi("Open"),
+            //                 IntPtr.Zero,
+            //                 GTK.GConnectFlags.G_CONNECT_AFTER
+            //             );
+            //             GTK.gtk_menu_shell_append(menu, openMenuItem);
+            //             GTK.gtk_widget_show(openMenuItem);
 
-            // Create menu item to check for updates
-            IntPtr updateMenuItem = GTK.gtk_menu_item_new_with_label("Check for updates");
-            GTK.g_signal_connect_data(updateMenuItem, "activate",
-                new GTK.ActivateCallback((widget, userData) => {
-                    string label = Marshal.PtrToStringAnsi(userData);
-                    Logger.WriteLine($"Item clicked: {label}");
-                }),
-                Marshal.StringToHGlobalAnsi("Check for updates"),
-                IntPtr.Zero,
-                GTK.GConnectFlags.G_CONNECT_AFTER
-            );
-            GTK.gtk_menu_shell_append(menu, updateMenuItem);
-            GTK.gtk_widget_show(updateMenuItem);
+            //             // Create menu item to check for updates
+            //             IntPtr updateMenuItem = GTK.gtk_menu_item_new_with_label("Check for updates");
+            //             GTK.g_signal_connect_data(updateMenuItem, "activate",
+            //                 new GTK.ActivateCallback((widget, userData) => {
+            //                     string label = Marshal.PtrToStringAnsi(userData);
+            //                     Logger.WriteLine($"Item clicked: {label}");
+            //                 }),
+            //                 Marshal.StringToHGlobalAnsi("Check for updates"),
+            //                 IntPtr.Zero,
+            //                 GTK.GConnectFlags.G_CONNECT_AFTER
+            //             );
+            //             GTK.gtk_menu_shell_append(menu, updateMenuItem);
+            //             GTK.gtk_widget_show(updateMenuItem);
 
-            // Create menu item to open recent links
-            IntPtr linksMenuItem = GTK.gtk_menu_item_new_with_label("Recent links");
-            GTK.gtk_menu_shell_append(menu, linksMenuItem);
-            IntPtr subMenu = GTK.gtk_menu_new();
-            IntPtr subMenuItem = GTK.gtk_menu_item_new_with_label("Left click to copy");
-            GTK.gtk_menu_shell_append(subMenu, subMenuItem);
-            GTK.gtk_widget_show_all(subMenu);
-            GTK.gtk_menu_item_set_submenu(linksMenuItem, subMenu);
-            GTK.gtk_widget_show(linksMenuItem);
+            //             // Create menu item to open recent links
+            //             IntPtr linksMenuItem = GTK.gtk_menu_item_new_with_label("Recent links");
+            //             GTK.gtk_menu_shell_append(menu, linksMenuItem);
+            //             IntPtr subMenu = GTK.gtk_menu_new();
+            //             IntPtr subMenuItem = GTK.gtk_menu_item_new_with_label("Left click to copy");
+            //             GTK.gtk_menu_shell_append(subMenu, subMenuItem);
+            //             GTK.gtk_widget_show_all(subMenu);
+            //             GTK.gtk_menu_item_set_submenu(linksMenuItem, subMenu);
+            //             GTK.gtk_widget_show(linksMenuItem);
 
-            // Create separator menu item
-            IntPtr separatorMenuItem = GTK.gtk_separator_menu_item_new();
-            GTK.gtk_menu_shell_append(menu, separatorMenuItem);
-            GTK.gtk_widget_show(separatorMenuItem);
+            //             // Create separator menu item
+            //             IntPtr separatorMenuItem = GTK.gtk_separator_menu_item_new();
+            //             GTK.gtk_menu_shell_append(menu, separatorMenuItem);
+            //             GTK.gtk_widget_show(separatorMenuItem);
 
-            // Create menu item to quit application
-            IntPtr quitMenuItem = GTK.gtk_menu_item_new_with_label("Quit");
-            GTK.g_signal_connect_data(quitMenuItem, "activate",
-                new GTK.ActivateCallback((widget, userData) => {
-                    Environment.Exit(1);
-                }),
-                Marshal.StringToHGlobalAnsi("Quit"),
-                IntPtr.Zero,
-                GTK.GConnectFlags.G_CONNECT_AFTER
-            );
-            GTK.gtk_menu_shell_append(menu, quitMenuItem);
-            GTK.gtk_widget_show(quitMenuItem);
-#if true
-            IntPtr indicator = Ayatana.app_indicator_new("RePlays", icon, 0);
-            if (indicator == IntPtr.Zero) {
-                Logger.WriteLine("Failed to create system tray.");
-                return;
-            }
-            Ayatana.app_indicator_set_status(indicator, 1);
-            Ayatana.app_indicator_set_icon(indicator, icon);
-            Ayatana.app_indicator_set_menu(indicator, menu);
-            GTK.g_signal_connect_data(indicator, "activate",
-                new GTK.ActivateCallback((widget, userData) => {
-                    string label = Marshal.PtrToStringAnsi(userData);
-                    Logger.WriteLine($"Item clicked: {label}");
-                }),
-                Marshal.StringToHGlobalAnsi("Tray"),
-                IntPtr.Zero,
-                GTK.GConnectFlags.G_CONNECT_AFTER
-            );
-#else
-            // Create status icon tray
-            IntPtr statusIcon = GTK.gtk_status_icon_new();
-            GTK.gtk_status_icon_set_tooltip_text(statusIcon, "RePlays");
-            GTK.gtk_status_icon_set_from_file(statusIcon, icon);
-            GTK.gtk_status_icon_set_visible(statusIcon, true);
-            var menuPositionCallback = new GTK.MenuPositionCallback((nint _, out int x, out int y, out bool push_in, nint userData) => {
-                GTK.gtk_status_icon_position_menu(menu, out int _x, out int _y, out bool _push_in, userData);
-                x = _x;
-                y = _y;
-                push_in = _push_in;
-            });
-            GTK.g_signal_connect_data(statusIcon, "activate",
-                new GTK.ActivateCallback((widget, userData) => {
-                    InitializeWebView();
-                }),
-                Marshal.StringToHGlobalAnsi("Tray"),
-                IntPtr.Zero,
-                GTK.GConnectFlags.G_CONNECT_AFTER
-            );
-            GTK.g_signal_connect_data(statusIcon, "popup-menu",
-                new GTK.PopupMenuCallback((statusIcon, button, activateTime, userData) => {
-                    GTK.gtk_widget_show_all(menu);
-                    GTK.gtk_menu_popup(menu, IntPtr.Zero, IntPtr.Zero, menuPositionCallback, statusIcon, button, activateTime);
-                }),
-                IntPtr.Zero,
-                IntPtr.Zero,
-                GTK.GConnectFlags.G_CONNECT_AFTER
-            );
-#endif
+            //             // Create menu item to quit application
+            //             IntPtr quitMenuItem = GTK.gtk_menu_item_new_with_label("Quit");
+            //             GTK.g_signal_connect_data(quitMenuItem, "activate",
+            //                 new GTK.ActivateCallback((widget, userData) => {
+            //                     Environment.Exit(1);
+            //                 }),
+            //                 Marshal.StringToHGlobalAnsi("Quit"),
+            //                 IntPtr.Zero,
+            //                 GTK.GConnectFlags.G_CONNECT_AFTER
+            //             );
+            //             GTK.gtk_menu_shell_append(menu, quitMenuItem);
+            //             GTK.gtk_widget_show(quitMenuItem);
+            // #if false
+            //                         IntPtr indicator = Ayatana.app_indicator_new("RePlays", icon, 0);
+            //                         if (indicator == IntPtr.Zero) {
+            //                             Logger.WriteLine("Failed to create system tray.");
+            //                             return;
+            //                         }
+            //                         Ayatana.app_indicator_set_status(indicator, 1);
+            //                         Ayatana.app_indicator_set_icon(indicator, icon);
+            //                         Ayatana.app_indicator_set_menu(indicator, menu);
+            //                         GTK.g_signal_connect_data(indicator, "activate",
+            //                             new GTK.ActivateCallback((widget, userData) => {
+            //                                 string label = Marshal.PtrToStringAnsi(userData);
+            //                                 Logger.WriteLine($"Item clicked: {label}");
+            //                             }),
+            //                             Marshal.StringToHGlobalAnsi("Tray"),
+            //                             IntPtr.Zero,
+            //                             GTK.GConnectFlags.G_CONNECT_AFTER
+            //                         );
+            // #else
+            //             // Create status icon tray
+            //             IntPtr statusIcon = GTK.gtk_status_icon_new();
+            //             GTK.gtk_status_icon_set_tooltip_text(statusIcon, "RePlays");
+            //             GTK.gtk_status_icon_set_from_file(statusIcon, icon);
+            //             GTK.gtk_status_icon_set_visible(statusIcon, true);
+            //             var menuPositionCallback = new GTK.MenuPositionCallback((nint _, out int x, out int y, out bool push_in, nint userData) => {
+            //                 GTK.gtk_status_icon_position_menu(menu, out int _x, out int _y, out bool _push_in, userData);
+            //                 x = _x;
+            //                 y = _y;
+            //                 push_in = _push_in;
+            //             });
+            //             GTK.g_signal_connect_data(statusIcon, "activate",
+            //                 new GTK.ActivateCallback((widget, userData) => {
+            //                     InitializeWebView();
+            //                 }),
+            //                 Marshal.StringToHGlobalAnsi("Tray"),
+            //                 IntPtr.Zero,
+            //                 GTK.GConnectFlags.G_CONNECT_AFTER
+            //             );
+            //             GTK.g_signal_connect_data(statusIcon, "popup-menu",
+            //                 new GTK.PopupMenuCallback((statusIcon, button, activateTime, userData) => {
+            //                     GTK.gtk_widget_show_all(menu);
+            //                     GTK.gtk_menu_popup(menu, IntPtr.Zero, IntPtr.Zero, menuPositionCallback, statusIcon, button, activateTime);
+            //                 }),
+            //                 IntPtr.Zero,
+            //                 IntPtr.Zero,
+            //                 GTK.GConnectFlags.G_CONNECT_AFTER
+            //             );
+            // #endif
 
             // Run the Gtk main loop
-            GTK.gtk_main();
+            //GTK.g_main_context_iteration(IntPtr.Zero, true);
         }
 
         static void InitializeWebView() {
-            if (window != IntPtr.Zero) {
-                GTK.gtk_window_present(window);
-                GTK.gtk_window_set_keep_above(window, true);
-                GTK.gtk_window_set_keep_above(window, false);
-                return;
-            }
-            window = GTK.gtk_window_new(GTK.GtkWindowType.GTK_WINDOW_TOPLEVEL);
-            GTK.gtk_window_set_default_size(window, 1080, 600);
-            GTK.gtk_window_set_icon_from_file(window, icon);
+            //WebServer.Start();
+            //window = GTK.gtk_window_new(GTK.GtkWindowType.GTK_WINDOW_TOPLEVEL);
+            //GTK.gtk_window_set_default_size(window, 1080, 600);
+            //GTK.gtk_window_set_icon_from_file(window, icon);
 
             // Create a new WebKitGTK WebView
-            IntPtr webView = WebKitGtk.webkit_web_view_new();
+            webView = WebKitGtk.webkit_web_view_new();
 
             // Enable extra settings
             IntPtr settings = WebKitGtk.webkit_settings_new();
@@ -154,28 +183,46 @@ namespace RePlays {
             WebKitGtk.webkit_settings_set_allow_file_access_from_file_urls(settings, true);
             WebKitGtk.webkit_settings_set_allow_universal_access_from_file_urls(settings, true);
             WebKitGtk.webkit_web_view_set_settings(webView, settings);
-
+            IntPtr manager = WebKitGtk.webkit_web_view_get_user_content_manager(webView);
+            WebKitGtk.webkit_user_content_manager_register_script_message_handler(manager, "external", null);
             // Load a URL into the WebView
-            WebKitGtk.webkit_web_view_load_uri(webView, GetRePlaysURI());
+            WebKitGtk.webkit_web_view_load_uri(webView, "file://" + Path.Join(GetSolutionPath(), "/wwwroot/preload.html"));
 
             // Add the WebView to the window
-            GTK.gtk_container_add(window, webView);
+            GTK4.gtk_window_set_child(window, webView);
+
+            GTK4.g_signal_connect_data(manager, "script-message-received::external", new GTK4.UserMessageReceivedCallback((webView, message) => {
+                // Handle the user message received from the WebView
+                // For example, you can log the message or perform some action based on it
+                Logger.WriteLine($"Browser message received: {WebKitGtk.jsc_value_to_string(message)}");
+                return true;
+            }), IntPtr.Zero, IntPtr.Zero, GTK4.GConnectFlags.G_CONNECT_AFTER);
 
             // Show all widgets in the window
-            GTK.gtk_widget_show_all(window);
 
-            GTK.g_signal_connect_data(window, "destroy",
-                new GTK.ActivateCallback((widget, userData) => {
-                    window = IntPtr.Zero;
-                }),
-                Marshal.StringToHGlobalAnsi("Close"),
-                IntPtr.Zero,
-                GTK.GConnectFlags.G_CONNECT_AFTER
-            );
+            // GTK.g_signal_connect_data(window, "destroy",
+            //     new GTK.ActivateCallback((widget, userData) => {
+            //         window = IntPtr.Zero;
+            //     }),
+            //     Marshal.StringToHGlobalAnsi("Close"),
+            //     IntPtr.Zero,
+            //     GTK.GConnectFlags.G_CONNECT_AFTER
+            // );
 
             // Bring window to the front
-            GTK.gtk_window_present(window);
+            GTK4.gtk_window_present(window);
         }
+
+        public static bool SendMessage(string message) {
+            if (webView == IntPtr.Zero) {
+                Logger.WriteLine("WebView is not initialized.");
+                return false;
+            }
+
+
+        }
+
+
 
         public static void Destroy() {
             throw new NotImplementedException();
@@ -199,11 +246,90 @@ namespace RePlays {
         // Add other function declarations as needed
     }
 
-    class GTK {
-        const string GtkLibrary = "libgtk-3";
+    class GTK4 {
+        const string GtkLibrary = "libgtk-4";
+
+        const string GObjectLibrary = "libgobject-2.0";
+
+        const string GioLibrary = "libgio-2.0";
+
+        const string GLibLibrary = "libglib-2.0";
 
         [DllImport(GtkLibrary, CallingConvention = CallingConvention.Cdecl)]
-        public static extern void gtk_init(ref int argc, ref IntPtr argv);
+        public static extern IntPtr gtk_window_set_child(IntPtr window, IntPtr widget);
+
+        [DllImport(GtkLibrary, CallingConvention = CallingConvention.Cdecl)]
+        public static extern void gtk_init();
+
+        [DllImport(GtkLibrary, CallingConvention = CallingConvention.Cdecl)]
+        public static extern IntPtr gtk_window_new();
+
+        [DllImport(GtkLibrary, CallingConvention = CallingConvention.Cdecl)]
+        public static extern IntPtr gtk_application_new(string applicationId, int flags);
+
+        [DllImport(GObjectLibrary, CallingConvention = CallingConvention.Cdecl)]
+        public static extern ulong g_signal_connect_closure(IntPtr instance, string detailed_signal, IntPtr closure, bool after);
+
+
+
+        [DllImport(GtkLibrary, CallingConvention = CallingConvention.Cdecl)]
+        public static extern IntPtr gtk_application_window_new(IntPtr app);
+
+        [DllImport(GtkLibrary, CallingConvention = CallingConvention.Cdecl)]
+        public static extern void gtk_window_set_title(IntPtr window, string title);
+
+        [DllImport(GtkLibrary, CallingConvention = CallingConvention.Cdecl)]
+        public static extern void gtk_window_set_default_size(IntPtr window, int width, int height);
+
+        [DllImport(GtkLibrary, CallingConvention = CallingConvention.Cdecl)]
+        public static extern void gtk_window_present(IntPtr window);
+
+        [DllImport(GtkLibrary, CallingConvention = CallingConvention.Cdecl)]
+        public static extern IntPtr g_application_run(IntPtr app, int argc, IntPtr argv);
+
+        [DllImport(GtkLibrary, CallingConvention = CallingConvention.Cdecl)]
+        public static extern IntPtr G_APPLICATION(IntPtr app);
+
+        [DllImport(GtkLibrary, CallingConvention = CallingConvention.Cdecl)]
+        public static extern IntPtr GTK_WINDOW(IntPtr window);
+
+        [DllImport(GtkLibrary, CallingConvention = CallingConvention.Cdecl)]
+        public static extern void g_object_unref(IntPtr obj);
+
+        [DllImport(GLibLibrary, CallingConvention = CallingConvention.Cdecl)]
+        public static extern bool g_main_context_iteration(IntPtr context, bool may_block);
+
+        [DllImport(GtkLibrary, CallingConvention = CallingConvention.Cdecl)]
+        public static extern bool g_signal_connect_data(IntPtr instance, string detailed_signal, UserMessageReceivedCallback userMessageHandler, IntPtr popupMenuData, IntPtr popupMenuDestroyData, GConnectFlags popupMenuConnectFlags);
+
+        //Application Flags for GTK
+        [Flags]
+        public enum GtkApplicationFlags {
+            GTK_APPLICATION_FLAGS_NONE = 0,
+            GTK_APPLICATION_IS_SERVICE = 1 << 0,
+            GTK_APPLICATION_HANDLES_OPEN = 1 << 1,
+            GTK_APPLICATION_SEND_WELCOME = 1 << 2,
+            GTK_APPLICATION_CAN_USE_COMMAND_LINE = 1 << 3,
+
+        }
+
+        [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
+        public delegate bool UserMessageReceivedCallback(IntPtr webView, IntPtr message);
+
+        public enum GConnectFlags {
+            G_CONNECT_AFTER = 1 << 0,
+            G_CONNECT_SWAPPED = 1 << 1
+        }
+    }
+
+    class GTK {
+        const string GtkLibrary = "libgtk-4";
+
+        [DllImport(GtkLibrary, CallingConvention = CallingConvention.Cdecl)]
+        public static extern void gtk_init();
+
+        [DllImport(GtkLibrary, CallingConvention = CallingConvention.Cdecl)]
+        public static extern void g_main_context_iteration(IntPtr context, bool may_block);
 
         [DllImport(GtkLibrary, CallingConvention = CallingConvention.Cdecl)]
         public static extern void gtk_main();
@@ -223,11 +349,14 @@ namespace RePlays {
         [DllImport(GtkLibrary, CallingConvention = CallingConvention.Cdecl)]
         public static extern void gtk_window_set_default_size(IntPtr window, int width, int height);
 
-        [DllImport(GtkLibrary, CallingConvention = CallingConvention.Cdecl)]
-        public static extern void gtk_window_set_icon_from_file(IntPtr icon, string filename);
+        //[DllImport(GtkLibrary, CallingConvention = CallingConvention.Cdecl)]
+        //public static extern void gtk_window_set_icon_from_file(IntPtr icon, string filename);
 
         [DllImport(GtkLibrary, CallingConvention = CallingConvention.Cdecl)]
         public static extern void gtk_container_add(IntPtr container, IntPtr widget);
+
+        [DllImport(GtkLibrary, CallingConvention = CallingConvention.Cdecl)]
+        public static extern void gtk_window_set_child(IntPtr window, IntPtr widget);
 
         [DllImport(GtkLibrary, CallingConvention = CallingConvention.Cdecl)]
         public static extern void gtk_widget_show_all(IntPtr widget);
@@ -307,8 +436,9 @@ namespace RePlays {
         }
     }
 
-    class WebKitGtk {
-        const string WebKitGtkLibrary = "libwebkit2gtk-4.0.so";
+    public class WebKitGtk {
+        const string WebKitGtkLibrary = "libwebkitgtk-6.0";
+        const string JSCoreLibrary = "libjavascriptcoregtk-6.0";
 
         [DllImport(WebKitGtkLibrary, CallingConvention = CallingConvention.Cdecl)]
         public static extern IntPtr webkit_web_view_new();
@@ -351,6 +481,16 @@ namespace RePlays {
 
         [DllImport(WebKitGtkLibrary, CallingConvention = CallingConvention.Cdecl)]
         public static extern void webkit_settings_set_user_agent(IntPtr settings, string userAgent);
+
+
+        [DllImport(WebKitGtkLibrary, CallingConvention = CallingConvention.Cdecl)]
+        public static extern IntPtr webkit_web_view_get_user_content_manager(IntPtr webView);
+
+        [DllImport(WebKitGtkLibrary, CallingConvention = CallingConvention.Cdecl)]
+        public static extern void webkit_user_content_manager_register_script_message_handler(IntPtr manager, string name, string world);
+
+        [DllImport(JSCoreLibrary, CallingConvention = CallingConvention.Cdecl)]
+        public static extern string jsc_value_to_string(IntPtr value);
     }
 #endif
 }

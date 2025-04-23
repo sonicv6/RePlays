@@ -121,76 +121,76 @@ namespace RePlays.Services {
             public string DeviceKey;
         }
 #else
-        private static Thread X11WindowWatcher;
-        static IntPtr X11Display;
-        static IntPtr X11RootWindow;
-        static Dictionary<nint, X11Window> x11Windows = [];
-        struct X11Window {
-            public nint id;
-            public string title;
-            public string classname;
-            public int pid;
-            public Rect size;
-        }
-        const string Xlib = "libX11";
+        // private static Thread X11WindowWatcher;
+        // static IntPtr X11Display;
+        // static IntPtr X11RootWindow;
+        // static Dictionary<nint, X11Window> x11Windows = [];
+        // struct X11Window {
+        //     public nint id;
+        //     public string title;
+        //     public string classname;
+        //     public int pid;
+        //     public Rect size;
+        // }
+        // // const string Xlib = "libX11";
 
-        [DllImport(Xlib, EntryPoint = "XOpenDisplay")]
-        static extern IntPtr XOpenDisplay(IntPtr display);
+        // [DllImport(Xlib, EntryPoint = "XOpenDisplay")]
+        // static extern IntPtr XOpenDisplay(IntPtr display);
 
-        [DllImport(Xlib, EntryPoint = "XDefaultRootWindow")]
-        static extern IntPtr XDefaultRootWindow(IntPtr display);
+        // [DllImport(Xlib, EntryPoint = "XDefaultRootWindow")]
+        // static extern IntPtr XDefaultRootWindow(IntPtr display);
 
-        [DllImport(Xlib, EntryPoint = "XQueryTree")]
-        static extern int XQueryTree(IntPtr display, IntPtr window, out IntPtr root, out IntPtr parent, out IntPtr children, out uint nChildren);
+        // [DllImport(Xlib, EntryPoint = "XQueryTree")]
+        // static extern int XQueryTree(IntPtr display, IntPtr window, out IntPtr root, out IntPtr parent, out IntPtr children, out uint nChildren);
 
-        [DllImport(Xlib, EntryPoint = "XFree")]
-        static extern int XFree(IntPtr data);
+        // [DllImport(Xlib, EntryPoint = "XFree")]
+        // static extern int XFree(IntPtr data);
 
-        [DllImport(Xlib, EntryPoint = "XFetchName", CharSet = CharSet.Ansi)]
-        static extern int XFetchName(IntPtr display, IntPtr window, ref IntPtr windowName);
+        // [DllImport(Xlib, EntryPoint = "XFetchName", CharSet = CharSet.Ansi)]
+        // static extern int XFetchName(IntPtr display, IntPtr window, ref IntPtr windowName);
 
-        [DllImport(Xlib, EntryPoint = "XGetWindowProperty")]
-        static extern int XGetWindowProperty(IntPtr display, IntPtr window, IntPtr property, long offset, long length, bool delete, IntPtr req_type, out IntPtr actual_type, out int actual_format, out uint nitems, out uint bytes_after, out IntPtr prop);
+        // [DllImport(Xlib, EntryPoint = "XGetWindowProperty")]
+        // static extern int XGetWindowProperty(IntPtr display, IntPtr window, IntPtr property, long offset, long length, bool delete, IntPtr req_type, out IntPtr actual_type, out int actual_format, out uint nitems, out uint bytes_after, out IntPtr prop);
 
-        [DllImport(Xlib, EntryPoint = "XCloseDisplay")]
-        static extern int XCloseDisplay(IntPtr display);
+        // [DllImport(Xlib, EntryPoint = "XCloseDisplay")]
+        // static extern int XCloseDisplay(IntPtr display);
 
-        [DllImport(Xlib, EntryPoint = "XGetClassHint")]
-        static extern int XGetClassHint(IntPtr display, IntPtr window, ref XClassHint classHint);
+        // [DllImport(Xlib, EntryPoint = "XGetClassHint")]
+        // static extern int XGetClassHint(IntPtr display, IntPtr window, ref XClassHint classHint);
 
-        [DllImport(Xlib, EntryPoint = "XInternAtom")]
-        static extern IntPtr XInternAtom(IntPtr display, string atomName, bool onlyIfExists);
+        // [DllImport(Xlib, EntryPoint = "XInternAtom")]
+        // static extern IntPtr XInternAtom(IntPtr display, string atomName, bool onlyIfExists);
 
-        static readonly IntPtr XA_CARD = (IntPtr)6; // Atom type for CARDINAL
+        // static readonly IntPtr XA_CARD = (IntPtr)6; // Atom type for CARDINAL
 
-        [DllImport(Xlib, EntryPoint = "XSetErrorHandler")]
-        static extern int XSetErrorHandler(XErrorHandler handler);
+        // [DllImport(Xlib, EntryPoint = "XSetErrorHandler")]
+        // static extern int XSetErrorHandler(XErrorHandler handler);
 
-        [DllImport(Xlib, EntryPoint = "XGetErrorText")]
-        static extern int XGetErrorText(IntPtr display, byte code, IntPtr buffer_return, int length);
+        // [DllImport(Xlib, EntryPoint = "XGetErrorText")]
+        // static extern int XGetErrorText(IntPtr display, byte code, IntPtr buffer_return, int length);
 
-        [DllImport(Xlib, EntryPoint = "XGetGeometry")]
-        static extern int XGetGeometry(IntPtr display, IntPtr drawable, out IntPtr root, out int x, out int y,
-            out uint width, out uint height, out uint border_width, out uint depth);
+        // [DllImport(Xlib, EntryPoint = "XGetGeometry")]
+        // static extern int XGetGeometry(IntPtr display, IntPtr drawable, out IntPtr root, out int x, out int y,
+        //     out uint width, out uint height, out uint border_width, out uint depth);
 
-        delegate int XErrorHandler(IntPtr display, ref XErrorEvent error_event);
+        // delegate int XErrorHandler(IntPtr display, ref XErrorEvent error_event);
 
-        [StructLayout(LayoutKind.Sequential)]
-        struct XErrorEvent {
-            public int type;
-            public IntPtr display;
-            public IntPtr resourceid;
-            public IntPtr serial;
-            public byte error_code;
-            public byte request_code;
-            public byte minor_code;
-        }
+        // [StructLayout(LayoutKind.Sequential)]
+        // struct XErrorEvent {
+        //     public int type;
+        //     public IntPtr display;
+        //     public IntPtr resourceid;
+        //     public IntPtr serial;
+        //     public byte error_code;
+        //     public byte request_code;
+        //     public byte minor_code;
+        // }
 
-        [StructLayout(LayoutKind.Sequential)]
-        struct XClassHint {
-            public IntPtr res_name;
-            public IntPtr res_class;
-        }
+        // [StructLayout(LayoutKind.Sequential)]
+        // struct XClassHint {
+        //     public IntPtr res_name;
+        //     public IntPtr res_class;
+        // }
 #endif
         private static Dictionary<string, string> drivePaths = [];
         public static bool IsStarted { get; internal set; }
@@ -244,9 +244,9 @@ namespace RePlays.Services {
                 return rect;
             }
 #else
-            if (XGetGeometry(X11Display, window, out _, out _, out _, out uint width, out uint height, out _, out _) != 0) {
-                return new Rect(0, 0, (int)width, (int)height);
-            }
+            // if (XGetGeometry(X11Display, window, out _, out _, out _, out uint width, out uint height, out _, out _) != 0) {
+            //     return new Rect(0, 0, (int)width, (int)height);
+            // }
 #endif
             return rect;
         }
@@ -317,89 +317,89 @@ namespace RePlays.Services {
             // watch window resize/move events 
             winResizeDele = OnWindowResizeMoveEvent;
             winResizeHook = SetWinEventHook(11, 11, IntPtr.Zero, winResizeDele, 0, 0, 0);
-#else
-            X11WindowWatcher = new(() => {
-                X11Display = XOpenDisplay(IntPtr.Zero);
-                if (X11Display == IntPtr.Zero) {
-                    Logger.WriteLine("Failed to open display.");
-                    return;
-                }
+// #else
+//             X11WindowWatcher = new(() => {
+//                 X11Display = XOpenDisplay(IntPtr.Zero);
+//                 if (X11Display == IntPtr.Zero) {
+//                     Logger.WriteLine("Failed to open display.");
+//                     return;
+//                 }
 
-                XSetErrorHandler(
-                    (IntPtr display, ref XErrorEvent error_event) => {
-                        IntPtr errorMessage = IntPtr.Zero;
-                        XGetErrorText(display, error_event.error_code, IntPtr.Zero, 0);
-                        errorMessage = Marshal.AllocHGlobal(256);
-                        XGetErrorText(display, error_event.error_code, errorMessage, 256);
+//                 XSetErrorHandler(
+//                     (IntPtr display, ref XErrorEvent error_event) => {
+//                         IntPtr errorMessage = IntPtr.Zero;
+//                         XGetErrorText(display, error_event.error_code, IntPtr.Zero, 0);
+//                         errorMessage = Marshal.AllocHGlobal(256);
+//                         XGetErrorText(display, error_event.error_code, errorMessage, 256);
 
-                        string errorString = Marshal.PtrToStringAnsi(errorMessage);
-                        Logger.WriteLine($"Xlib Error: {errorString}");
+//                         string errorString = Marshal.PtrToStringAnsi(errorMessage);
+//                         Logger.WriteLine($"Xlib Error: {errorString}");
 
-                        Marshal.FreeHGlobal(errorMessage);
-                        return 0;
-                    }
-                );
+//                         Marshal.FreeHGlobal(errorMessage);
+//                         return 0;
+//                     }
+//                 );
 
-                X11RootWindow = XDefaultRootWindow(X11Display);
-                IsStarted = true;
-                while (IsStarted) {
-                    Dictionary<nint, X11Window> prevWindows = new(x11Windows);
-                    x11Windows.Clear();
-                    IntPtr clientListAtom = XInternAtom(X11Display, "_NET_CLIENT_LIST", true);
-                    if (clientListAtom != IntPtr.Zero) {
-                        if (XGetWindowProperty(X11Display, X11RootWindow, clientListAtom, 0L, ~0L, false, IntPtr.Zero, out nint actualType, out int actualFormat, out uint nItems, out _, out nint prop) == 0) {
-                            if (actualFormat == 32 && nItems > 0) {
-                                IntPtr[] windowList = new IntPtr[nItems];
-                                Marshal.Copy(prop, windowList, 0, (int)nItems);
-                                XFree(prop);
-                                foreach (IntPtr window in windowList) {
-                                    string windowName = GetWindowTitle(window);
+//                 X11RootWindow = XDefaultRootWindow(X11Display);
+//                 IsStarted = true;
+//                 while (IsStarted) {
+//                     Dictionary<nint, X11Window> prevWindows = new(x11Windows);
+//                     x11Windows.Clear();
+//                     IntPtr clientListAtom = XInternAtom(X11Display, "_NET_CLIENT_LIST", true);
+//                     if (clientListAtom != IntPtr.Zero) {
+//                         if (XGetWindowProperty(X11Display, X11RootWindow, clientListAtom, 0L, ~0L, false, IntPtr.Zero, out nint actualType, out int actualFormat, out uint nItems, out _, out nint prop) == 0) {
+//                             if (actualFormat == 32 && nItems > 0) {
+//                                 IntPtr[] windowList = new IntPtr[nItems];
+//                                 Marshal.Copy(prop, windowList, 0, (int)nItems);
+//                                 XFree(prop);
+//                                 foreach (IntPtr window in windowList) {
+//                                     string windowName = GetWindowTitle(window);
 
-                                    if (string.IsNullOrEmpty(windowName)) continue;
+//                                     if (string.IsNullOrEmpty(windowName)) continue;
 
-                                    string windowClass = GetClassName(window);
-                                    var windowSize = GetWindowSize(window);
-                                    int windowPid = GetWindowPid(window);
+//                                     string windowClass = GetClassName(window);
+//                                     var windowSize = GetWindowSize(window);
+//                                     int windowPid = GetWindowPid(window);
 
-                                    if (windowPid <= 0) continue;
+//                                     if (windowPid <= 0) continue;
 
-                                    bool hasPrev = prevWindows.TryGetValue(window, out X11Window prev);
-                                    bool hasCurr = x11Windows.TryGetValue(window, out X11Window curr);
+//                                     bool hasPrev = prevWindows.TryGetValue(window, out X11Window prev);
+//                                     bool hasCurr = x11Windows.TryGetValue(window, out X11Window curr);
 
-                                    if (!hasPrev && !hasCurr) {
-                                        DetectionService.WindowCreation(window, windowPid);
-                                    }
+//                                     if (!hasPrev && !hasCurr) {
+//                                         DetectionService.WindowCreation(window, windowPid);
+//                                     }
 
-                                    x11Windows[window] = new X11Window {
-                                        id = window,
-                                        title = windowName,
-                                        classname = windowClass,
-                                        pid = windowPid,
-                                        size = windowSize
-                                    };
+//                                     x11Windows[window] = new X11Window {
+//                                         id = window,
+//                                         title = windowName,
+//                                         classname = windowClass,
+//                                         pid = windowPid,
+//                                         size = windowSize
+//                                     };
 
-                                    hasCurr = x11Windows.TryGetValue(window, out X11Window newCurr);
-                                    curr = newCurr;
+//                                     hasCurr = x11Windows.TryGetValue(window, out X11Window newCurr);
+//                                     curr = newCurr;
 
-                                    if (hasPrev && hasCurr && prev.size.GetSizeStr() != curr.size.GetSizeStr()) {
-                                        DetectionService.WindowCreation(window, windowPid);
-                                    }
-                                }
+//                                     if (hasPrev && hasCurr && prev.size.ToString() != curr.size.ToString()) {
+//                                         DetectionService.WindowCreation(window, windowPid);
+//                                     }
+//                                 }
 
-                                if (RecordingService.IsRecording && !RecordingService.IsStopping) {
-                                    var session = RecordingService.GetCurrentSession();
-                                    if (!x11Windows.ContainsKey(session.WindowHandle)) {
-                                        DetectionService.WindowDeletion(session.WindowHandle, session.Pid);
-                                    }
-                                }
-                            }
-                        }
-                    }
-                    Thread.Sleep(1);
-                }
-                XCloseDisplay(X11Display);
-            });
-            X11WindowWatcher.Start();
+//                                 if (RecordingService.IsRecording && !RecordingService.IsStopping) {
+//                                     var session = RecordingService.GetCurrentSession();
+//                                     if (!x11Windows.ContainsKey(session.WindowHandle)) {
+//                                         DetectionService.WindowDeletion(session.WindowHandle, session.Pid);
+//                                     }
+//                                 }
+//                             }
+//                         }
+//                     }
+//                     Thread.Sleep(1);
+//                 }
+//                 XCloseDisplay(X11Display);
+//             });
+//             X11WindowWatcher.Start();
 #endif
         }
 
@@ -418,29 +418,29 @@ namespace RePlays.Services {
             UnhookWinEvent(winResizeHook);
             winActiveDele = null;
             winResizeDele = null;
-#else
-            X11WindowWatcher.Join(); // Stop
+// #else
+//             X11WindowWatcher.Join(); // Stop
 #endif
         }
 
         public static string GetWindowTitle(IntPtr window) {
             string windowName = "";
 #if !WINDOWS
-            IntPtr windowNamePtr = IntPtr.Zero;
-            IntPtr nameAtom = XInternAtom(X11Display, "_NET_WM_NAME", false);
-            if (nameAtom != IntPtr.Zero) {
-                if (XGetWindowProperty(X11Display, window, nameAtom, 0, 16384, false, IntPtr.Zero, out nint actualType, out int actualFormat, out uint nItems, out _, out nint prop) == 0) {
-                    if (prop != IntPtr.Zero & nItems > 0) {
-                        windowName = Marshal.PtrToStringAnsi(prop);
-                        XFree(prop);
-                    }
-                }
-            }
+            // IntPtr windowNamePtr = IntPtr.Zero;
+            // IntPtr nameAtom = XInternAtom(X11Display, "_NET_WM_NAME", false);
+            // if (nameAtom != IntPtr.Zero) {
+            //     if (XGetWindowProperty(X11Display, window, nameAtom, 0, 16384, false, IntPtr.Zero, out nint actualType, out int actualFormat, out uint nItems, out _, out nint prop) == 0) {
+            //         if (prop != IntPtr.Zero & nItems > 0) {
+            //             windowName = Marshal.PtrToStringAnsi(prop);
+            //             XFree(prop);
+            //         }
+            //     }
+            // }
 
-            if (windowName == "" && XFetchName(X11Display, window, ref windowNamePtr) != 0) {
-                windowName = Marshal.PtrToStringAnsi(windowNamePtr);
-                XFree(windowNamePtr);
-            }
+            // if (windowName == "" && XFetchName(X11Display, window, ref windowNamePtr) != 0) {
+            //     windowName = Marshal.PtrToStringAnsi(windowNamePtr);
+            //     XFree(windowNamePtr);
+            // }
 #else
             StringBuilder buffer = new(256);
 
@@ -454,14 +454,15 @@ namespace RePlays.Services {
 
         public static string GetClassName(IntPtr window) {
 #if !WINDOWS
-            XClassHint classHint = new();
-            if (XGetClassHint(X11Display, window, ref classHint) != 0) {
-                string res_name = Marshal.PtrToStringAnsi(classHint.res_name);
-                string res_class = Marshal.PtrToStringAnsi(classHint.res_class);
-                XFree(classHint.res_name);
-                XFree(classHint.res_class);
-                return $"{res_name}"; //xcompositor-input only uses res_name: https://github.com/obsproject/obs-studio/blob/e27b013d4754e0e81119ab237ffedce8fcebcbbf/plugins/linux-capture/xcomposite-input.c#L207
-            }
+            // XClassHint classHint = new();
+            // if (XGetClassHint(X11Display, window, ref classHint) != 0) {
+            //     string res_name = Marshal.PtrToStringAnsi(classHint.res_name);
+            //     string res_class = Marshal.PtrToStringAnsi(classHint.res_class);
+            //     XFree(classHint.res_name);
+            //     XFree(classHint.res_class);
+            //     return $"{res_name}"; //xcompositor-input only uses res_name: https://github.com/obsproject/obs-studio/blob/e27b013d4754e0e81119ab237ffedce8fcebcbbf/plugins/linux-capture/xcomposite-input.c#L207
+            // }
+            // return "";
             return "";
 #else
             StringBuilder className = new(256);
@@ -472,17 +473,17 @@ namespace RePlays.Services {
 
         public static int GetWindowPid(IntPtr window) {
 #if !WINDOWS
-            IntPtr pidAtom = XInternAtom(X11Display, "_NET_WM_PID", false);
+            // IntPtr pidAtom = XInternAtom(X11Display, "_NET_WM_PID", false);
 
-            if (pidAtom != IntPtr.Zero) {
-                if (XGetWindowProperty(X11Display, window, pidAtom, 0, 1, false, IntPtr.Zero, out nint actualType, out int actualFormat, out uint nItems, out _, out nint prop) == 0) {
-                    if (actualType == XA_CARD && actualFormat == 32 && nItems == 1) {
-                        int pid = Marshal.ReadInt32(prop);
-                        XFree(prop);
-                        return pid;
-                    }
-                }
-            }
+            // if (pidAtom != IntPtr.Zero) {
+            //     if (XGetWindowProperty(X11Display, window, pidAtom, 0, 1, false, IntPtr.Zero, out nint actualType, out int actualFormat, out uint nItems, out _, out nint prop) == 0) {
+            //         if (actualType == XA_CARD && actualFormat == 32 && nItems == 1) {
+            //             int pid = Marshal.ReadInt32(prop);
+            //             XFree(prop);
+            //             return pid;
+            //         }
+            //     }
+            // }
 #endif
             return -1;
         }

@@ -203,7 +203,17 @@ namespace RePlays.Utils {
                 }
                 return true;
             }
-#endif
+#else
+            if (LinuxInterface.webView == IntPtr.Zero) return false;
+            if (html == "") {
+                LinuxInterface.SendMessage(message);
+            }
+            else {
+                var messageData = new { message, html };
+                var jsonData = JsonSerializer.Serialize(messageData);
+                LinuxInterface.SendMessage(jsonData);
+            }
+
             return true;
         }
 

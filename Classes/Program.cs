@@ -30,6 +30,7 @@ namespace RePlays {
         [STAThread]
         [Obsolete]
         static void Main(string[] args) {
+            Environment.SetEnvironmentVariable("__GLX_VENDOR_LIBRARY_NAME", "mesa");
             Functions.SetProgramArgs(args);
             // redirect console output to parent process;
             // must be before any calls to Console.WriteLine()
