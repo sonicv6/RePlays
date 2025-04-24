@@ -206,14 +206,18 @@ namespace RePlays.Utils {
 #else
             if (LinuxInterface.webView == IntPtr.Zero) return false;
             if (html == "") {
-                LinuxInterface.SendMessage(message);
+                LinuxInterface.actionQueue.Enqueue(() => {
+                    LinuxInterface.SendMessage(message);
+                });
             }
             else {
                 var messageData = new { message, html };
                 var jsonData = JsonSerializer.Serialize(messageData);
-                LinuxInterface.SendMessage(jsonData);
+                LinuxInterface.actionQueue.Enqueue(() => {
+                    LinuxInterface.SendMessage(message);
+                });
             }
-
+#endif
             return true;
         }
 
@@ -238,6 +242,8 @@ namespace RePlays.Utils {
                         WebServer.Start();
 #endif
                         WindowsInterface.webView2.CoreWebView2.Navigate(GetRePlaysURI());
+#else
+                        LinuxInterface.Navigate(GetRePlaysURI());
 #endif
                         break;
                     }

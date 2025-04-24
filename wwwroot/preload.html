@@ -1,13 +1,13 @@
 <body>
   <script>
     function ready() {
-      window.webkit.messageHandlers.external.postMessage(JSON.stringify({message: "BrowserReady", data: null}));
+      //window.webkit.messageHandlers.external.postMessage(JSON.stringify({message: "BrowserReady", data: null}));
       if(window.chrome !== undefined) {
         window.chrome.webview.postMessage({message: "BrowserReady", data: null});
         return;
       }
-      if(window.external.sendMessage !== undefined) {
-        window.external.sendMessage(JSON.stringify({message: "BrowserReady", data: null}));
+      if(window.webkit !== undefined) {
+        window.webkit.messageHandlers.message.postMessage(JSON.stringify({message: "BrowserReady", data: null}));
         return;
       }
     }

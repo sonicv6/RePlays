@@ -53,26 +53,43 @@ function initialize() {
     window.chrome.webview.postMessage({ message: "Initialize", data: null });
     return;
   }
-  if (window.external.sendMessage !== undefined) {
-    window.external.sendMessage(JSON.stringify({ message: "Initialize", data: null }));
+  else if (window.webkit !== undefined) {
+    window.webkit.messageHandlers.message.postMessage(JSON.stringify({ message: "Initialize", data: null }));
     return;
   }
 }
 
 // listen for WebView2 messages and attempt to swap in html
 // html fragments should be 'hx-swap-oob' for successful swaps
-window.chrome.webview.addEventListener("message", (event) => {
-  htmx.swap(
-    document.createElement('div'),
-    event.data.data,
-    { swapStyle: 'none' },
-    {
-      afterSwapCallback: () => {
-        console.log(event.data.message, { data: event.data.data });
-        SpatialNavigation.makeFocusable();
-      }
-    });
-});
+if (window.chrome !== undefined) {
+  window.chrome.webview.addEventListener("message", (event) => {
+    htmx.swap(
+      document.createElement('div'),
+      event.data.data,
+      { swapStyle: 'none' },
+      {
+        afterSwapCallback: () => {
+          console.log(event.data.message, { data: event.data.data });
+          SpatialNavigation.makeFocusable();
+        }
+      });
+  });
+}
+else if (window.webkit !== undefined) {
+  document.addEventListener("LinuxMessage", (event) => {
+    window.webkit.messageHandlers.message.postMessage("RECEIVED!!!!" + event.detail);
+    htmx.swap(
+      document.createElement('div'),
+      event.detail.data,
+      { swapStyle: 'none' },
+      {
+        afterSwapCallback: () => {
+          //console.log(event.detail.message, { data: event.detail.data });
+          SpatialNavigation.makeFocusable();
+        }
+      });
+  });
+}
 const patchedSend = async function () {
   // Make readonly properties writable
   Object.defineProperty(this, "readyState", { writable: true })

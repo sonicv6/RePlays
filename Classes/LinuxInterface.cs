@@ -10,6 +10,9 @@ using System.Runtime.InteropServices.Marshalling;
 using System.Net;
 using System.Net.Sockets;
 using RePlays.Classes.Utils;
+using System.Text.Json;
+using System.Collections;
+using System.Collections.Generic;
 
 namespace RePlays {
 #if !WINDOWS
@@ -23,6 +26,11 @@ namespace RePlays {
         delegate void ActivateCallback(IntPtr app, IntPtr user_data);
 
         public static IntPtr webView;
+
+        public delegate void LinuxInterfaceAction();
+
+
+        public static Queue<LinuxInterfaceAction> actionQueue = new Queue<LinuxInterfaceAction>();
 
         public static void Activate(IntPtr app, IntPtr user_data) {
             IntPtr window;
@@ -47,6 +55,10 @@ namespace RePlays {
             InitializeWebView();
 
             while (true) {
+                while (actionQueue.Count > 0) {
+                    LinuxInterfaceAction action = actionQueue.Dequeue();
+                    action.Invoke();
+                }
                 GTK4.g_main_context_iteration(IntPtr.Zero, false);
             }
 
@@ -184,17 +196,20 @@ namespace RePlays {
             WebKitGtk.webkit_settings_set_allow_universal_access_from_file_urls(settings, true);
             WebKitGtk.webkit_web_view_set_settings(webView, settings);
             IntPtr manager = WebKitGtk.webkit_web_view_get_user_content_manager(webView);
-            WebKitGtk.webkit_user_content_manager_register_script_message_handler(manager, "external", null);
+            WebKitGtk.webkit_user_content_manager_register_script_message_handler(manager, "message", null);
             // Load a URL into the WebView
             WebKitGtk.webkit_web_view_load_uri(webView, "file://" + Path.Join(GetSolutionPath(), "/wwwroot/preload.html"));
 
             // Add the WebView to the window
             GTK4.gtk_window_set_child(window, webView);
 
-            GTK4.g_signal_connect_data(manager, "script-message-received::external", new GTK4.UserMessageReceivedCallback((webView, message) => {
+            GTK4.g_signal_connect_data(manager, "script-message-received::message", new GTK4.UserMessageReceivedCallback((webView, message) => {
                 // Handle the user message received from the WebView
                 // For example, you can log the message or perform some action based on it
-                Logger.WriteLine($"Browser message received: {WebKitGtk.jsc_value_to_string(message)}");
+                string result = WebKitGtk.jsc_value_to_string(message);
+                Logger.WriteLine($"Browser message received: {result}");
+                if (result.StartsWith("RECEIVED!!!!")) return true;
+                WebMessage.ReceiveMessage(result);
                 return true;
             }), IntPtr.Zero, IntPtr.Zero, GTK4.GConnectFlags.G_CONNECT_AFTER);
 
@@ -213,13 +228,23 @@ namespace RePlays {
             GTK4.gtk_window_present(window);
         }
 
+        public static void Navigate(string uri) {
+            WebKitGtk.webkit_web_view_load_uri(webView, uri);
+        }
+
         public static bool SendMessage(string message) {
+            Console.WriteLine("Sending message to WebView: " + message);
             if (webView == IntPtr.Zero) {
                 Logger.WriteLine("WebView is not initialized.");
                 return false;
             }
 
-
+            string jsCode = $@"
+            var event = new CustomEvent('LinuxMessage', {{ detail: {message}}});
+            document.dispatchEvent(event);";
+            // Send a message to the WebView
+            WebKitGtk.webkit_web_view_evaluate_javascript(webView, jsCode, new nuint((uint)jsCode.Length), null, null, IntPtr.Zero, IntPtr.Zero, IntPtr.Zero);
+            return true;
         }
 
 
@@ -491,6 +516,9 @@ namespace RePlays {
 
         [DllImport(JSCoreLibrary, CallingConvention = CallingConvention.Cdecl)]
         public static extern string jsc_value_to_string(IntPtr value);
+
+        [DllImport(WebKitGtkLibrary, CallingConvention = CallingConvention.Cdecl)]
+        public static extern void webkit_web_view_evaluate_javascript(IntPtr web_view, string script, UIntPtr length, string world_name, string source_uri, IntPtr cancellable, IntPtr callback, IntPtr user_data);
     }
 #endif
 }
